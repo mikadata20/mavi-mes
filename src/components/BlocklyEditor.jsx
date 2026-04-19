@@ -7,13 +7,13 @@ import { Code, X, Sparkles } from 'lucide-react';
 import AiLogicAdvisor from './AiLogicAdvisor';
 
 const BLOCK_COLORS = {
-    CONTROL: '#FFAB19',
-    LOGIC: '#00B295',
-    MATH: '#4A90E2',
-    TEXT: '#D93B8A',
-    LISTS: '#76D6FF',
-    VARIABLES: '#F57F17',
-    PROCEDURES: '#7455A7',
+    CONTROL: '#A0522D',     // Cokelat
+    LOGIC: '#00B295',       // Hijau
+    MATH: '#4A90E2',        // Biru
+    TEXT: '#D93B8A',        // Ungu
+    LISTS: '#FF4081',       // Pink/Magenta
+    VARIABLES: '#F57F17',   // Oranye
+    PROCEDURES: '#767676',  // Abu-abu
     DICTIONARIES: '#912424',
     COMPONENTS: '#00B295',
     COLORS: '#767676',

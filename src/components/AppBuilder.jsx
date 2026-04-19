@@ -7604,6 +7604,49 @@ const AppBuilder = () => {
 
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     {/* Relocated Device & Lock Controls */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginRight: '4px' }}>
+                        <button
+                            onClick={() => handleUndo()}
+                            disabled={history.length === 0}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#fff',
+                                cursor: history.length === 0 ? 'not-allowed' : 'pointer',
+                                opacity: history.length === 0 ? 0.4 : 1,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                gap: '2px'
+                            }}
+                            title="Undo"
+                        >
+                            <Undo2 size={16} />
+                            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>Undo</span>
+                        </button>
+                        <button
+                            onClick={() => handleRedo()}
+                            disabled={future.length === 0}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#fff',
+                                cursor: future.length === 0 ? 'not-allowed' : 'pointer',
+                                opacity: future.length === 0 ? 0.4 : 1,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                gap: '2px'
+                            }}
+                            title="Redo"
+                        >
+                            <Redo2 size={16} />
+                            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>Redo</span>
+                        </button>
+                    </div>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '4px 8px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(4px)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
                             <LayoutGrid size={14} color="rgba(255,255,255,0.7)" />
@@ -7968,82 +8011,6 @@ const AppBuilder = () => {
                             </button>
 
                             <div style={{ width: '8px' }} />
-
-                            <button
-                                onClick={() => handleUndo()}
-                                disabled={history.length === 0}
-                                title="Undo"
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minWidth: '60px',
-                                    padding: '8px',
-                                    height: '56px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: history.length === 0 ? 'not-allowed' : 'pointer',
-                                    transition: 'all 0.2s',
-                                    gap: '6px',
-                                    opacity: history.length === 0 ? 0.4 : 1
-                                }}
-                            >
-                                <div style={{
-                                    backgroundColor: '#f8fafc',
-                                    padding: '6px',
-                                    borderRadius: '6px',
-                                    color: '#64748b',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '32px',
-                                    height: '32px'
-                                }}>
-                                    <Undo2 size={18} strokeWidth={2} />
-                                </div>
-                                <span style={{ fontSize: '0.6rem', fontWeight: 600, color: '#64748b' }}>Undo</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleRedo()}
-                                disabled={future.length === 0}
-                                title="Redo"
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minWidth: '60px',
-                                    padding: '8px',
-                                    height: '56px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: future.length === 0 ? 'not-allowed' : 'pointer',
-                                    transition: 'all 0.2s',
-                                    gap: '6px',
-                                    opacity: future.length === 0 ? 0.4 : 1
-                                }}
-                            >
-                                <div style={{
-                                    backgroundColor: '#f8fafc',
-                                    padding: '6px',
-                                    borderRadius: '6px',
-                                    color: '#64748b',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '32px',
-                                    height: '32px'
-                                }}>
-                                    <Redo2 size={18} strokeWidth={2} />
-                                </div>
-                                <span style={{ fontSize: '0.6rem', fontWeight: 600, color: '#64748b' }}>Redo</span>
-                            </button>
-
-
                         </div>
                     </div>
 
