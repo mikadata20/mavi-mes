@@ -193,13 +193,19 @@ export const getChatCompletion = async (messages, connector) => {
     const settings = connector?.aiSettings;
     if (!settings) throw new Error('AI Settings are missing.');
 
-    const provider = normalizeProvider(settings.provider);
-    const modelId = settings.modelId;
+    let provider = normalizeProvider(settings.provider);
+    const modelId = String(settings.modelId || '').trim();
     const apiKey = settings.apiKey;
     const baseUrl = settings.baseUrl || connector?.serverAddress;
 
+    // Backward compatibility for legacy rows where provider might be empty
+    if (!provider && modelId.toLowerCase().startsWith('gemini')) {
+        provider = 'gemini';
+    }
+
     if (provider === 'gemini') {
-        const url = `https://generativelanguage.googleapis.com/v1/models/${modelId}:generateContent?key=${apiKey}`;
+        const cleanModelId = modelId.includes('/') ? modelId.split('/').pop() : modelId;
+        const url = `https://generativelanguage.googleapis.com/v1/models/${cleanModelId}:generateContent?key=${apiKey}`;
         const payload = {
             contents: messages.map(m => ({
                 role: m.role === 'assistant' ? 'model' : 'user',
@@ -207,7 +213,11 @@ export const getChatCompletion = async (messages, connector) => {
             })),
             generationConfig: { temperature: 0.7 }
         };
-        const response = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
         if (!response.ok) throw new Error((await response.json()).error?.message || 'Gemini Chat Error');
         const result = await response.json();
         return result.candidates[0].content.parts[0].text;
@@ -252,6 +262,14 @@ CONTEXT:
 BLOCKLY XML FORMAT:
 If you suggest logic, you MUST provide a valid Blockly XML snippet wrapped in <block_xml> tags.
 IMPORTANT: Do NOT use markdown code blocks (like \`\`\`xml) inside the <block_xml> tags. Output the RAW XML only.
+If a required widget does not exist yet, you may also include one or more widget directives in:
+<add_widget>{"type":"BUTTON","label":"Start","text":"Start"}</add_widget>
+Then provide the related <block_xml> snippet that uses that widget.
+IMPORTANT:
+- If user asks for "when button clicked" logic and no exact widget id is known, ALWAYS output <add_widget> first for a BUTTON.
+- Prefer this pattern:
+  <add_widget>{"type":"BUTTON","label":"AI Button","text":"Tap Me","idHint":"ai_generated_button"}</add_widget>
+  <block_xml>...</block_xml>
 Example:
 "To make the button move, use this block:
 <block_xml>

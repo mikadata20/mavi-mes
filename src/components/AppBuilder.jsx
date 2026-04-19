@@ -884,7 +884,21 @@ const COMPONENT_TYPES = {
     // 12. Drawing and Animation
     BALL: { id: 'BALL', label: 'Ball', icon: Circle, defaultProps: { backgroundColor: '#3b82f6', radius: 10, speed: 0, heading: 0, interval: 100, enabled: true, visible: true, z: 1, originAtCenter: true, triggers: [], visibilityCondition: null, rotation: 0 } },
     CANVAS: { id: 'CANVAS', label: 'Canvas', icon: PenTool, defaultSize: { w: 320, h: 320 }, defaultProps: { backgroundColor: '#ffffff', backgroundImage: '', lineWidth: 2, paintColor: '#000000', fontSize: 14, textAlignment: 1, visible: true, triggers: [], visibilityCondition: null, rotation: 0, width: '100%', height: '300px' } },
-    IMAGE_SPRITE: { id: 'IMAGE_SPRITE', label: 'ImageSprite', icon: ImageIcon, defaultSize: { w: 64, h: 64 }, defaultProps: { picture: '', speed: 0, heading: 0, interval: 100, enabled: true, visible: true, rotates: true, width: 'auto', height: 'auto', z: 1, originX: 0.5, originY: 0.5, triggers: [], visibilityCondition: null, rotation: 0 } }
+    IMAGE_SPRITE: { id: 'IMAGE_SPRITE', label: 'ImageSprite', icon: ImageIcon, defaultSize: { w: 64, h: 64 }, defaultProps: { picture: '', speed: 0, heading: 0, interval: 100, enabled: true, visible: true, rotates: true, width: 'auto', height: 'auto', z: 1, originX: 0.5, originY: 0.5, triggers: [], visibilityCondition: null, rotation: 0 } },
+
+    // Additional & Chromeless Types (Defensive definitions to prevent crashes)
+    IOT_CONNECTOR: { id: 'IOT_CONNECTOR', label: 'IoT Connector', icon: Cpu, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    DATABASE_CONNECTOR: { id: 'DATABASE_CONNECTOR', label: 'Database Connector', icon: Database, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    API_CONNECTOR: { id: 'API_CONNECTOR', label: 'API Connector', icon: Globe, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    LOGIC_NODE: { id: 'LOGIC_NODE', label: 'Logic Node', icon: Blocks, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    EVENT_TRIGGER: { id: 'EVENT_TRIGGER', label: 'Event Trigger', icon: Zap, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    BARCODE: { id: 'BARCODE', label: 'Barcode', icon: ScanLine, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    FILE_UPLOAD: { id: 'FILE_UPLOAD', label: 'File Upload', icon: Upload, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    MEDIA_RECORDER: { id: 'MEDIA_RECORDER', label: 'Media Recorder', icon: Mic, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    BARCODE_SCANNER_NON_VISIBLE: { id: 'BARCODE_SCANNER_NON_VISIBLE', label: 'Scanner (Non-visible)', icon: ScanLine, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    NUMBER_INPUT: { id: 'NUMBER_INPUT', label: 'Number Input', icon: Hash, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    MENU: { id: 'MENU', label: 'Menu', icon: Menu, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    TIMER: { id: 'TIMER', label: 'Timer', icon: Clock, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } }
 };
 
 
@@ -1116,7 +1130,7 @@ const AppBuilder = () => {
     ]);
     const [globalLogic, setGlobalLogic] = useState({ xml: null, code: '' });
     const [baseComponents, setBaseComponents] = useState([]);
-    const [currentStepId, setCurrentStepId] = useState('step_1');
+    const [currentStepId, setCurrentStepId] = useState('screen_1');
     const [selectedCompIds, setSelectedCompIds] = useState([]);
     const selectedCompId = selectedCompIds.length === 1 ? selectedCompIds[0] : null;
     const [currentAppId, setCurrentAppId] = useState(null);
@@ -1616,7 +1630,7 @@ const AppBuilder = () => {
     const [integrationConnectors, setIntegrationConnectors] = useState([]);
     const [activeDropdown, setActiveDropdown] = useState(null); // Add Step / Add Table menus (not widget palette)
     const [openWidgetPaletteKey, setOpenWidgetPaletteKey] = useState(null); // USER_INTERFACE, MEDIA, ... — separate so Add Step onMouseLeave cannot clear palette
-    const [stepPanelTab, setStepPanelTab] = useState('STEPS');
+    const [stepPanelTab, setStepPanelTab] = useState('SCREENS');
 
     useEffect(() => {
         if (!openWidgetPaletteKey) return;
@@ -4512,26 +4526,58 @@ const AppBuilder = () => {
         return uniqueName;
     };
 
+    const normalizeShapeType = (shapeType) => {
+        const key = String(shapeType || '').toUpperCase();
+
+        if (key.startsWith('SHAPE_')) return key;
+
+        switch (String(shapeType || '').toLowerCase()) {
+            case 'line':
+                return 'SHAPE_LINE';
+            case 'arrow_right':
+            case 'arrow_left':
+            case 'arrow_up':
+            case 'arrow_down':
+            case 'double_arrow_line':
+                return 'SHAPE_ARROW';
+            case 'ellipse':
+                return 'SHAPE_CIRCLE';
+            case 'triangle':
+                return 'SHAPE_TRIANGLE';
+            case 'rounded_rectangle':
+            case 'rectangle':
+            case 'parallelogram':
+            case 'trapezium':
+            case 'diamond':
+            case 'pentagon':
+            case 'hexagon':
+            default:
+                return 'SHAPE_RECTANGLE';
+        }
+    };
+
     const addComponent = (typeId, overrideProps = {}) => {
         saveHistory();
-        const typeDef = COMPONENT_TYPES[typeId];
-        const baseName = typeDef?.label || typeId;
+        const { type: overrideType, ...restOverrideProps } = overrideProps || {};
+        const resolvedTypeId = typeId === 'SHAPE' ? normalizeShapeType(overrideType) : typeId;
+        const typeDef = COMPONENT_TYPES[resolvedTypeId];
+        const baseName = typeDef?.label || resolvedTypeId;
         const uniqueName = getUniqueWidgetName(baseName);
 
         const newComp = {
             id: `comp_${Date.now()}`,
             name: uniqueName,
             displayName: baseName,
-            type: typeId,
+            type: resolvedTypeId,
             x: 50,
             y: 50,
             w: typeDef?.defaultSize?.w || 160,
             h: typeDef?.defaultSize?.h || 48,
-            props: { ...typeDef?.defaultProps, ...overrideProps }
+            props: { ...typeDef?.defaultProps, ...restOverrideProps }
         };
 
         // Automatic parenting for Sprites (Ball, ImageSprite)
-        if (['BALL', 'IMAGE_SPRITE'].includes(typeId)) {
+        if (['BALL', 'IMAGE_SPRITE'].includes(resolvedTypeId)) {
             const currentComps = currentStepId === 'BASE' ? baseComponents : steps.find(s => s.id === currentStepId)?.components || [];
             const existingCanvas = currentComps.find(c => c.type === 'CANVAS');
             if (existingCanvas) {
@@ -4556,13 +4602,14 @@ const AppBuilder = () => {
         setTimeout(() => setRecentlyAddedCompId(null), 3000);
 
         setActiveTab('WIDGET');
+        return newComp.id;
     };
 
     const deleteComponent = (id) => {
-        const comp = (currentStepId === 'BASE' ? baseComponents : steps.flatMap(s => s.components)).find(c => c.id === id);
+        const comp = [...baseComponents, ...steps.flatMap(s => s.components || [])].find(c => c.id === id);
         if (!comp) return;
 
-        const confirmMsg = `Hapus screen "${comp.name || comp.id}"?\n\nSemua code block yang berhubungan dengan screen ini di Logic Editor juga akan dihapus secara otomatis.`;
+        const confirmMsg = `Hapus widget "${comp.name || comp.id}"?\n\nSemua code block yang berhubungan dengan widget ini di Logic Editor juga akan dihapus secara otomatis.`;
         if (!window.confirm(confirmMsg)) return;
 
         saveHistory();
@@ -4601,8 +4648,7 @@ const AppBuilder = () => {
 
         // Clean components and logic in steps
         setSteps(prevSteps => prevSteps.map(s => {
-            const isBaseMode = currentStepId === 'BASE';
-            const newComps = isBaseMode ? s.components : s.components.filter(c => c.id !== id);
+            const newComps = (s.components || []).filter(c => c.id !== id);
             const newLogic = s.logic && s.logic.xml ? { ...s.logic, xml: cleanXml(s.logic.xml) } : s.logic;
             return { ...s, components: newComps, logic: newLogic };
         }));
@@ -4612,10 +4658,8 @@ const AppBuilder = () => {
             setGlobalLogic(prev => ({ ...prev, xml: cleanXml(prev.xml) }));
         }
 
-        // Handle base components if in BASE mode
-        if (currentStepId === 'BASE') {
-            setBaseComponents(prev => prev.filter(c => c.id !== id));
-        }
+        // Always clean base components too, regardless of active step
+        setBaseComponents(prev => prev.filter(c => c.id !== id));
 
         if (selectedCompIds.includes(id)) setSelectedCompIds(prev => prev.filter(i => i !== id));
         setContextMenu({ ...contextMenu, isOpen: false });
@@ -4741,15 +4785,21 @@ const AppBuilder = () => {
     };
 
     const deleteStep = (stepId, e) => {
-        if (e) e.stopPropagation();
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
         if (confirm('Are you sure you want to delete this step? This will also delete any components or child steps within it.')) {
             saveHistory();
-            setSteps(steps.filter(s => s.id !== stepId && s.parentGroupId !== stepId));
-            if (currentStepId === stepId || steps.find(s => s.id === currentStepId)?.parentGroupId === stepId) {
-                // If the currently viewed step is the one deleted or a child of it, go back to Base Layout or first available step
-                const remainingSteps = steps.filter(s => s.id !== stepId && s.parentGroupId !== stepId);
-                setCurrentStepId(remainingSteps.length > 0 ? remainingSteps[0].id : 'BASE');
-            }
+            setSteps(prevSteps => {
+                const remainingSteps = prevSteps.filter(s => s.id !== stepId && s.parentGroupId !== stepId);
+                const activeStep = prevSteps.find(s => s.id === currentStepId);
+                if (currentStepId === stepId || activeStep?.parentGroupId === stepId) {
+                    // If the currently viewed step is the one deleted (or child of it), move to next available step.
+                    setCurrentStepId(remainingSteps.length > 0 ? remainingSteps[0].id : 'BASE');
+                }
+                return remainingSteps;
+            });
         }
     };
 
@@ -5177,7 +5227,7 @@ const AppBuilder = () => {
         setAppFunctions([]);
         setRecordPlaceholders([]);
         setRecordPlaceholderData({});
-        setCurrentStepId('step_1');
+        setCurrentStepId('screen_1');
         setSelectedCompIds([]);
         setCurrentAppId(null);
         setAppBackgroundColor('#ffffff');
@@ -7191,6 +7241,20 @@ const AppBuilder = () => {
                 );
             }
 
+            case 'SHAPE': {
+                // Backward compatibility for older data that stored generic SHAPE + props.type
+                const legacyResolvedType = normalizeShapeType(comp.props?.type);
+                if (legacyResolvedType !== 'SHAPE') {
+                    const legacyDef = COMPONENT_TYPES[legacyResolvedType];
+                    return renderComponent({
+                        ...comp,
+                        type: legacyResolvedType,
+                        props: { ...(legacyDef?.defaultProps || {}), ...(comp.props || {}) }
+                    });
+                }
+                break;
+            }
+
             case 'SHAPE_CIRCLE': {
                 const isVisible = comp.props.visible !== false;
                 if (!isVisible && viewMode === 'PREVIEW') return null;
@@ -8290,6 +8354,20 @@ const AppBuilder = () => {
                             onUpdateStepLogic={(stepId, xml, code) => {
                                 setSteps(prev => prev.map(s => s.id === stepId ? { ...s, logic: { xml, code } } : s));
                             }}
+                            onCreateWidgetFromAi={async (widgetSpec = {}) => {
+                                const rawType = String(widgetSpec.type || 'BUTTON').toUpperCase();
+                                const safeType = COMPONENT_TYPES[rawType] ? rawType : 'BUTTON';
+
+                                const props = {
+                                    ...(widgetSpec.props || {})
+                                };
+
+                                if (widgetSpec.label && !props.label) props.label = widgetSpec.label;
+                                if (widgetSpec.text && !props.text) props.text = widgetSpec.text;
+
+                                const newId = addComponent(safeType, props);
+                                return newId;
+                            }}
                             onClose={() => setViewMode('DESIGN')}
                         />
                     </div>
@@ -8751,7 +8829,7 @@ const AppBuilder = () => {
                                                                                 <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', padding: '4px' }}>No widgets</div>
                                                                             ) : (
                                                                                 step.components.map(comp => {
-                                                                                    const compConfig = COMPONENT_TYPES[comp.type];
+                                                                                    const compConfig = COMPONENT_TYPES[comp.type] || { label: comp.type, icon: Square };
                                                                                     const CompIcon = compConfig.icon || Square;
                                                                                     return (
                                                                                         <div
@@ -9095,7 +9173,18 @@ const AppBuilder = () => {
                                     ))}
 
                                     {currentStep?.components.length === 0 && baseComponents.length === 0 && (
-                                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                                        <div style={{
+                                            position: 'absolute',
+                                            inset: 0,
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            textAlign: 'center',
+                                            color: '#94a3b8',
+                                            pointerEvents: 'none',
+                                            zIndex: 1
+                                        }}>
                                             <MousePointer2 size={48} style={{ marginBottom: '20px' }} />
                                             <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>Canvas is Empty</p>
                                             <p style={{ fontSize: '0.85rem' }}>Add a widget from the toolbar above to start.</p>
@@ -9570,7 +9659,9 @@ const AppBuilder = () => {
                                         ) : selectedComp ? (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <div style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 'bold' }}>{COMPONENT_TYPES[selectedComp.type].label}</div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 'bold' }}>
+                                                        {COMPONENT_TYPES[selectedComp.type]?.label || selectedComp.name || selectedComp.type || 'Widget'}
+                                                    </div>
                                                     <div style={{ display: 'flex', gap: '8px' }}>
                                                         <button
                                                             onClick={() => handleCopy()}
@@ -18189,12 +18280,5 @@ const AppBuilder = () => {
 };
 
 export default AppBuilder;
-
-
-
-
-
-
-
 
 

@@ -29,6 +29,7 @@ const BlocklyEditor = ({
     globalLogic,
     onUpdateGlobalLogic,
     onUpdateStepLogic,
+    onCreateWidgetFromAi,
     onClose
 }) => {
     const baseComponents = initialBaseComponents;
@@ -39,8 +40,73 @@ const BlocklyEditor = ({
     const [isCodeViewOpen, setIsCodeViewOpen] = useState(false);
     const [generatedCode, setGeneratedCode] = useState('');
     const [isAiAdvisorOpen, setIsAiAdvisorOpen] = useState(false);
+    const [isSavingLogic, setIsSavingLogic] = useState(false);
+    const [saveProgress, setSaveProgress] = useState(0);
+    const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+
+    const saveProgressTimerRef = useRef(null);
+    const saveResetTimerRef = useRef(null);
 
     const currentStep = steps.find(s => s.id === currentStepId);
+
+    const parseAddWidgetSpecs = (text) => {
+        const specs = [];
+        if (!text) return specs;
+
+        const regex = /<add_widget>([\s\S]*?)<\/add_widget>/gi;
+        let match;
+        while ((match = regex.exec(String(text))) !== null) {
+            const raw = String(match[1] || '').trim();
+            if (!raw) continue;
+
+            // Preferred format: JSON payload
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    specs.push(parsed);
+                    continue;
+                }
+            } catch (_) { }
+
+            // Fallback format: type=BUTTON,label=Start,text=Start
+            const obj = {};
+            raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).forEach((part) => {
+                const idx = part.indexOf('=');
+                if (idx <= 0) return;
+                const k = part.slice(0, idx).trim().toLowerCase();
+                const v = part.slice(idx + 1).trim();
+                if (!k) return;
+                if (k === 'type') obj.type = v;
+                else if (k === 'label') obj.label = v;
+                else if (k === 'text') obj.text = v;
+                else if (k === 'id' || k === 'widget_id') obj.idHint = v;
+            });
+            if (Object.keys(obj).length > 0) specs.push(obj);
+        }
+
+        return specs;
+    };
+
+    const parseBlockXmlSnippets = (text) => {
+        const snippets = [];
+        if (!text) return snippets;
+
+        const source = String(text);
+        const wrapped = /<block_xml>([\s\S]*?)<\/block_xml>/gi;
+        let match;
+        while ((match = wrapped.exec(source)) !== null) {
+            const content = String(match[1] || '').trim();
+            if (content) snippets.push(content);
+        }
+
+        if (snippets.length === 0) {
+            if (source.includes('<xml') || source.includes('<block')) {
+                snippets.push(source);
+            }
+        }
+
+        return snippets;
+    };
 
     // 1. Initialize Workspace and Handle Lifecycle
     useEffect(() => {
@@ -150,6 +216,13 @@ const BlocklyEditor = ({
             Blockly.Events.enable();
         }
     }, [currentStepId, activeScope, steps, appVariables, baseComponents]);
+
+    useEffect(() => {
+        return () => {
+            if (saveProgressTimerRef.current) clearInterval(saveProgressTimerRef.current);
+            if (saveResetTimerRef.current) clearTimeout(saveResetTimerRef.current);
+        };
+    }, []);
 
     const defineCoreBlocks = () => {
         const DICT_KEY_CHECKS = ['String', 'Number'];
@@ -297,13 +370,25 @@ const BlocklyEditor = ({
         // --- MIT App Inventor Screen (Step) Parity Blocks ---
 
         // 1. Step Initialize (Event)
+        // --- Logic Data Blocks ---
+        if (!Blockly.Blocks['get_event_parameter']) {
+            Blockly.Blocks['get_event_parameter'] = {
+                init: function () {
+                    this.appendDummyInput().appendField("get event output");
+                    this.setOutput(true, null);
+                    this.setColour(BLOCK_COLORS.LOGIC);
+                    this.setTooltip("Get the output value from the current trigger event (e.g. Barcode result, Sensor value).");
+                }
+            };
+        }
+
         if (!Blockly.Blocks['step_initialize']) {
             Blockly.Blocks['step_initialize'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Screen.Initialize");
+                    this.appendDummyInput().appendField("When Step.Initialize");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
                     this.setColour(BLOCK_COLORS.COMPONENTS);
-                    this.setTooltip("The Initialize event is run when the Screen starts.");
+                    this.setTooltip("The Initialize event is run when the Step starts.");
                     if (this.setHat) this.setHat(true);
                 }
             };
@@ -313,7 +398,7 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['step_back_pressed']) {
             Blockly.Blocks['step_back_pressed'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Screen.BackPressed");
+                    this.appendDummyInput().appendField("When Step.BackPressed");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
                     this.setColour(BLOCK_COLORS.COMPONENTS);
                     this.setTooltip("Device back button pressed.");
@@ -326,7 +411,7 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['step_error_occurred']) {
             Blockly.Blocks['step_error_occurred'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Screen.ErrorOccurred");
+                    this.appendDummyInput().appendField("When Step.ErrorOccurred");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
                     this.setColour(BLOCK_COLORS.COMPONENTS);
                     this.setTooltip("Event raised when an error occurs.");
@@ -340,17 +425,17 @@ const BlocklyEditor = ({
             Blockly.Blocks['set_step_property'] = {
                 init: function () {
                     const properties = [
-                        ['AboutScreen', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
+                        ['AboutStep', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
                         ['BackgroundImage', 'backgroundImage'], ['AlignHorizontal', 'alignHorizontal'],
                         ['AlignVertical', 'alignVertical'], ['Title', 'title'],
                         ['Scrollable', 'isScrollable'], ['ShowStatusBar', 'showStatusBar'],
-                        ['TitleVisible', 'titleVisible'], ['ScreenOrientation', 'orientation'],
+                        ['TitleVisible', 'titleVisible'], ['StepOrientation', 'orientation'],
                         ['HighContrast', 'highContrast'], ['AccentColor', 'accentColor'],
                         ['PrimaryColor', 'primaryColor'], ['AppName', 'appName']
                     ];
                     this.appendValueInput("VALUE")
                         .setCheck(null)
-                        .appendField("set Screen")
+                        .appendField("set Step")
                         .appendField(new Blockly.FieldDropdown(properties), "PROP")
                         .appendField("to");
                     this.setPreviousStatement(true, null);
@@ -365,14 +450,14 @@ const BlocklyEditor = ({
             Blockly.Blocks['get_step_property'] = {
                 init: function () {
                     const properties = [
-                        ['AboutScreen', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
+                        ['AboutStep', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
                         ['BackgroundImage', 'backgroundImage'], ['AlignHorizontal', 'alignHorizontal'],
                         ['AlignVertical', 'alignVertical'], ['Title', 'title'],
                         ['Height', 'height'], ['Width', 'width'],
                         ['Platform', 'platform'], ['PlatformVersion', 'platformVersion']
                     ];
                     this.appendDummyInput()
-                        .appendField("Screen")
+                        .appendField("Step")
                         .appendField(new Blockly.FieldDropdown(properties), "PROP");
                     this.setOutput(true, null);
                     this.setColour(BLOCK_COLORS.COMPONENTS);
@@ -386,7 +471,7 @@ const BlocklyEditor = ({
                 init: function () {
                     this.appendValueInput("PERMISSION")
                         .setCheck("String")
-                        .appendField("call Screen.AskForPermission");
+                        .appendField("call Step.AskForPermission");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
                     this.setColour(290);
@@ -397,7 +482,7 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['step_hide_keyboard']) {
             Blockly.Blocks['step_hide_keyboard'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("call Screen.HideKeyboard");
+                    this.appendDummyInput().appendField("call Step.HideKeyboard");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
                     this.setColour(290);
@@ -1194,6 +1279,10 @@ const BlocklyEditor = ({
             const varId = block.getFieldValue('VAR');
             const value = javascriptGenerator.valueToCode(block, 'VALUE', javascriptGenerator.ORDER_ATOMIC) || 'null';
             return `context.setVariable("${varId}", ${value});\n`;
+        };
+
+        javascriptGenerator.forBlock['get_event_parameter'] = function (block) {
+            return [`context.getEventParameter()`, javascriptGenerator.ORDER_ATOMIC];
         };
 
         javascriptGenerator.forBlock['get_app_variable'] = function (block) {
@@ -3003,35 +3092,41 @@ const BlocklyEditor = ({
         const categories = [
             {
                 kind: 'category',
-                name: 'Screen',
-                colour: BLOCK_COLORS.COMPONENTS,
+                name: 'Step Triggers',
+                colour: BLOCK_COLORS.MAVI_SCREEN,
                 contents: [
                     { kind: 'block', type: 'step_initialize' },
                     { kind: 'block', type: 'step_back_pressed' },
                     { kind: 'block', type: 'step_error_occurred' },
                     { kind: 'sep' },
                     { kind: 'block', type: 'set_step_property' },
-                    { kind: 'block', type: 'get_step_property' },
-                    { kind: 'sep' },
-                    { kind: 'block', type: 'step_ask_permission' },
-                    { kind: 'block', type: 'step_hide_keyboard' }
+                    { kind: 'block', type: 'get_step_property' }
                 ]
             },
             {
                 kind: 'category',
-                name: 'Triggers',
+                name: 'Device Triggers',
                 colour: BLOCK_COLORS.MAVI_TRIGGER,
                 contents: [
                     { kind: 'block', type: 'trigger_when_device' },
                     { kind: 'block', type: 'trigger_when_timer' },
                     { kind: 'sep' },
-                    { kind: 'block', type: 'action_run_connector' },
-                    { kind: 'block', type: 'action_show_error' },
-                    { kind: 'block', type: 'action_send_alert' },
+                    { kind: 'block', type: 'get_event_parameter' },
                     { kind: 'sep' },
+                    { kind: 'block', type: 'action_run_connector' },
+                    { kind: 'block', type: 'action_show_error' }
+                ]
+            },
+            {
+                kind: 'category',
+                name: 'App Transitions',
+                colour: '#6366f1',
+                contents: [
                     { kind: 'block', type: 'transition_go_to_step' },
                     { kind: 'block', type: 'transition_next_step' },
-                    { kind: 'block', type: 'transition_complete_app' }
+                    { kind: 'block', type: 'transition_complete_app' },
+                    { kind: 'sep' },
+                    { kind: 'block', type: 'action_send_alert' }
                 ]
             },
             {
@@ -3210,7 +3305,7 @@ const BlocklyEditor = ({
             { kind: 'sep' },
             {
                 kind: 'category',
-                name: 'App Events',
+                name: 'App Triggers',
                 colour: BLOCK_COLORS.COMPONENTS,
                 contents: [
                     { kind: 'block', type: 'event_app_start' },
@@ -3268,38 +3363,427 @@ const BlocklyEditor = ({
         };
     };
 
-    const saveWorkspace = () => {
+    const saveWorkspace = async () => {
         if (!workspace.current) return;
+        if (isSavingLogic) return;
+
+        if (saveProgressTimerRef.current) clearInterval(saveProgressTimerRef.current);
+        if (saveResetTimerRef.current) clearTimeout(saveResetTimerRef.current);
+
+        setIsSavingLogic(true);
+        setSaveStatus('saving');
+        setSaveProgress(12);
+
+        saveProgressTimerRef.current = setInterval(() => {
+            setSaveProgress((prev) => (prev >= 90 ? 90 : prev + Math.max(2, Math.round((90 - prev) * 0.15))));
+        }, 90);
+
         const xml = Blockly.Xml.workspaceToDom(workspace.current);
         const xmlText = Blockly.Xml.domToText(xml);
         const code = javascriptGenerator.workspaceToCode(workspace.current);
 
-        if (activeScope === 'GLOBAL') {
-            onUpdateGlobalLogic(xmlText, code);
-        } else {
-            onUpdateStepLogic(currentStepId, xmlText, code);
+        try {
+            if (activeScope === 'GLOBAL') {
+                await Promise.resolve(onUpdateGlobalLogic(xmlText, code));
+            } else {
+                await Promise.resolve(onUpdateStepLogic(currentStepId, xmlText, code));
+            }
+
+            if (saveProgressTimerRef.current) clearInterval(saveProgressTimerRef.current);
+            setSaveProgress(100);
+            setSaveStatus('saved');
+            setIsSavingLogic(false);
+
+            saveResetTimerRef.current = setTimeout(() => {
+                setSaveStatus('idle');
+                setSaveProgress(0);
+            }, 1200);
+        } catch (error) {
+            console.error('Failed to save Blockly logic:', error);
+            if (saveProgressTimerRef.current) clearInterval(saveProgressTimerRef.current);
+            setSaveStatus('error');
+            setIsSavingLogic(false);
+
+            saveResetTimerRef.current = setTimeout(() => {
+                setSaveStatus('idle');
+                setSaveProgress(0);
+            }, 1800);
         }
     };
 
-    const handleApplyXml = (xmlString) => {
+    const handleApplyXml = async (xmlString, options = {}) => {
         if (!workspace.current || !xmlString) return;
         try {
-            // 1. Clean XML String aggressively
-            let processedXml = xmlString.trim();
-            // Remove markdown code block wrappers if they persist
-            processedXml = processedXml.replace(/```xml\n?|```\n?/g, '').trim();
+            // 1. Normalize incoming XML/snippet
+            let processedXml = String(xmlString).trim();
+            processedXml = processedXml
+                .replace(/```xml\s*/gi, '')
+                .replace(/```/g, '')
+                .trim();
 
-            if (!processedXml.startsWith('<xml')) {
+            // Accept either full <xml>...</xml> or one/more <block ...> snippets.
+            if (!/^<xml[\s>]/i.test(processedXml)) {
                 processedXml = `<xml xmlns="https://developers.google.com/blockly/xml">${processedXml}</xml>`;
             }
 
-            const xml = Blockly.utils.xml.textToDom(processedXml);
+            // Guard: parsererror from malformed XML
+            const parser = new DOMParser();
+            const parsed = parser.parseFromString(processedXml, 'text/xml');
+            if (parsed.getElementsByTagName('parsererror').length > 0) {
+                throw new Error('XML tidak valid. Pastikan format block XML benar.');
+            }
+
+            // 2) Sanitize AI-generated block types to match available dynamic Blockly types
+            const validTypes = new Set(Object.keys(Blockly.Blocks || {}));
+            const allBlocks = Array.from(parsed.getElementsByTagName('block'));
+            let unsupportedCount = 0;
+            const existingWidgetIds = new Set([
+                ...(baseComponents || []).map(c => c.id),
+                ...(currentStep?.components || []).map(c => c.id)
+            ]);
+            const widgetIdMap = {};
+
+            const getFieldValue = (blockEl, fieldName) => {
+                const fields = Array.from(blockEl.getElementsByTagName('field'));
+                const found = fields.find((f) => (f.getAttribute('name') || '').toUpperCase() === String(fieldName || '').toUpperCase());
+                return found?.textContent?.trim() || '';
+            };
+
+            const inferEventId = (raw = '') => {
+                const t = String(raw || '').toLowerCase();
+                if (!t) return 'Click';
+                if (t.includes('change')) return 'ON_CHANGE';
+                if (t.includes('submit')) return 'ON_SUBMIT';
+                if (t.includes('click')) return 'Click';
+                return 'Click';
+            };
+
+            const remapWidgetIdInType = (type, fromId, toId) => {
+                if (!type || !fromId || !toId) return type;
+                let next = String(type);
+                next = next
+                    .replace(`_widget_${fromId}_`, `_widget_${toId}_`)
+                    .replace(new RegExp(`_widget_${fromId}$`), `_widget_${toId}`);
+                if (validTypes.has(next)) return next;
+
+                // Event block fallback candidates
+                if (next.startsWith('event_widget_')) {
+                    const fallbackCandidates = [
+                        `event_widget_${toId}_Click`,
+                        `event_widget_${toId}_ON_CLICK`,
+                        `event_widget_${toId}_ON_CHANGE`
+                    ];
+                    const hit = fallbackCandidates.find((c) => validTypes.has(c));
+                    if (hit) return hit;
+                }
+                return next;
+            };
+
+            const registerDynamicEventBlocks = (widgetId, widgetLabel = 'AI Widget') => {
+                if (!widgetId) return;
+                const eventTypes = getEventTypesForComponent('BUTTON') || [];
+                eventTypes.forEach((evt) => {
+                    const triggerBlockName = `event_widget_${widgetId}_${evt.id}`;
+                    if (!Blockly.Blocks[triggerBlockName]) {
+                        Blockly.Blocks[triggerBlockName] = {
+                            init: function () {
+                                this.appendDummyInput().appendField(`When ${widgetLabel} ${evt.label}`);
+                                const args = evt.args || [];
+                                if (args.length > 0) {
+                                    this.appendDummyInput().appendField(`(${args.join(', ')})`).setAlign(Blockly.inputs.Align.RIGHT);
+                                }
+                                this.appendStatementInput("STACK").setCheck(null).appendField("do");
+                                this.setColour(BLOCK_COLORS.COMPONENTS);
+                                this.setInputsInline(false);
+                                if (this.setHat) this.setHat(true);
+                            }
+                        };
+                    }
+                    if (!javascriptGenerator.forBlock[triggerBlockName]) {
+                        javascriptGenerator.forBlock[triggerBlockName] = function (block) {
+                            const branch = javascriptGenerator.statementToCode(block, 'STACK');
+                            return `// TRIGGER: WIDGET_EVENT:${widgetId}:${evt.id}\n${branch}`;
+                        };
+                    }
+                    validTypes.add(triggerBlockName);
+                });
+            };
+
+            const ensureWidgetForId = async (wantedId, preferredType = 'BUTTON') => {
+                const id = String(wantedId || '').trim();
+                if (!id) return '';
+                if (existingWidgetIds.has(id)) return id;
+                if (widgetIdMap[id]) return widgetIdMap[id];
+                if (options.fallbackWidgetId) {
+                    widgetIdMap[id] = options.fallbackWidgetId;
+                    registerDynamicEventBlocks(widgetIdMap[id], 'AI Widget');
+                    return widgetIdMap[id];
+                }
+                if (!options.autoCreateMissing || typeof onCreateWidgetFromAi !== 'function') return '';
+
+                const createdId = await Promise.resolve(onCreateWidgetFromAi({
+                    type: preferredType,
+                    idHint: id,
+                    label: 'AI Widget',
+                    text: 'AI Widget'
+                }));
+                if (createdId) {
+                    widgetIdMap[id] = createdId;
+                    existingWidgetIds.add(createdId);
+                    registerDynamicEventBlocks(createdId, 'AI Widget');
+                }
+                return widgetIdMap[id] || '';
+            };
+
+            for (const blockEl of allBlocks) {
+                if (!blockEl || typeof blockEl.getAttribute !== 'function') continue;
+                let type = blockEl.getAttribute('type') || '';
+
+                // Common AI pattern: "do" statement name from MIT-style examples
+                if (String(type).startsWith('event_')) {
+                    const doStmt = Array.from(blockEl.getElementsByTagName('statement')).find((s) => s.getAttribute('name') === 'DO');
+                    if (doStmt) doStmt.setAttribute('name', 'STACK');
+                }
+
+                if (validTypes.has(type)) continue;
+
+                // Map generic AI event blocks to actual dynamic event block ids
+                if (
+                    type === 'event_when' ||
+                    type === 'when_button_click' ||
+                    type === 'event_button_click' ||
+                    /^when_.*click$/i.test(type)
+                ) {
+                    const widgetId =
+                        getFieldValue(blockEl, 'WIDGET') ||
+                        getFieldValue(blockEl, 'BUTTON') ||
+                        getFieldValue(blockEl, 'COMPONENT');
+                    const rawEvent = getFieldValue(blockEl, 'EVENT') || type;
+                    const inferred = inferEventId(rawEvent);
+
+                    let resolvedWidgetId = widgetId;
+                    if (widgetId && !existingWidgetIds.has(widgetId)) {
+                        const autoId = await ensureWidgetForId(widgetId, 'BUTTON');
+                        if (autoId) resolvedWidgetId = autoId;
+                    }
+
+                    // If AI did not provide widget id, auto-create/use a button so we can keep widget-click semantics.
+                    if (!resolvedWidgetId) {
+                        const fallbackId =
+                            options.fallbackWidgetId ||
+                            (await ensureWidgetForId('ai_generated_button', 'BUTTON'));
+                        if (fallbackId) resolvedWidgetId = fallbackId;
+                    }
+
+                    const candidates = [
+                        `event_widget_${resolvedWidgetId}_${inferred}`,
+                        `event_widget_${resolvedWidgetId}_Click`,
+                        `event_widget_${resolvedWidgetId}_ON_CLICK`
+                    ];
+                    const mapped = candidates.find((c) => validTypes.has(c));
+                    if (mapped) {
+                        blockEl.setAttribute('type', mapped);
+                        const fields = Array.from(blockEl.getElementsByTagName('field'));
+                        fields.forEach((f) => {
+                            const n = (f.getAttribute('name') || '').toUpperCase();
+                            if (['WIDGET', 'BUTTON', 'COMPONENT'].includes(n) && resolvedWidgetId) {
+                                f.textContent = resolvedWidgetId;
+                            }
+                        });
+                        const doStmt = Array.from(blockEl.getElementsByTagName('statement')).find((s) => s.getAttribute('name') === 'DO');
+                        if (doStmt) doStmt.setAttribute('name', 'STACK');
+                        continue;
+                    }
+
+                    if (validTypes.has('event_app_start')) {
+                        blockEl.setAttribute('type', 'event_app_start');
+                        const doStmt = Array.from(blockEl.getElementsByTagName('statement')).find((s) => s.getAttribute('name') === 'DO');
+                        if (doStmt) doStmt.setAttribute('name', 'STACK');
+                        continue;
+                    }
+                }
+
+                // If type references a widget id that doesn't exist, create one and remap.
+                if (type.includes('_widget_')) {
+                    const guessed =
+                        type.match(/^event_widget_(.+)_[^_]+$/)?.[1] ||
+                        type.match(/^(?:setter|getter|instance)_widget_(.+)$/)?.[1] ||
+                        type.match(/^method_widget_(.+)_[^_]+$/)?.[1] ||
+                        '';
+                    if (guessed && !existingWidgetIds.has(guessed)) {
+                        const created = await ensureWidgetForId(guessed, 'BUTTON');
+                        if (created) {
+                            const remappedType = remapWidgetIdInType(type, guessed, created);
+                            if (validTypes.has(remappedType)) {
+                                blockEl.setAttribute('type', remappedType);
+                                type = remappedType;
+                            }
+                            const fields = Array.from(blockEl.getElementsByTagName('field'));
+                            fields.forEach((f) => {
+                                const n = (f.getAttribute('name') || '').toUpperCase();
+                                if (['WIDGET', 'BUTTON', 'COMPONENT'].includes(n) && f.textContent === guessed) {
+                                    f.textContent = created;
+                                }
+                            });
+                            if (validTypes.has(type)) continue;
+                        }
+                    }
+                }
+
+                // Fallback: drop unsupported blocks instead of failing whole injection
+                unsupportedCount += 1;
+                if (blockEl.parentNode) blockEl.parentNode.removeChild(blockEl);
+            }
+
+            if (unsupportedCount > 0) {
+                console.warn(`[Blockly AI] Dropped ${unsupportedCount} unsupported block(s) from suggestion.`);
+            }
+
+            const sanitizedXmlText = new XMLSerializer().serializeToString(parsed);
 
             // 2. Track existing blocks to identify new ones
             const existingIds = new Set(workspace.current.getAllBlocks(false).map(b => b.id));
 
-            // 3. Inject
-            Blockly.Xml.domToWorkspace(xml, workspace.current);
+            // 3. Inject with fallback for invalid <next> chains from AI
+            try {
+                const xml = Blockly.utils.xml.textToDom(sanitizedXmlText);
+                Blockly.Xml.domToWorkspace(xml, workspace.current);
+            } catch (injectErr) {
+                const msg = String(injectErr?.message || '');
+                const nextChainError = /Next block does not have previous statement/i.test(msg);
+                if (!nextChainError) throw injectErr;
+
+                const fallbackDoc = parser.parseFromString(sanitizedXmlText, 'text/xml');
+                const xmlRoot = fallbackDoc.getElementsByTagName('xml')[0] || fallbackDoc.documentElement;
+                const typeConnCache = new Map();
+                const getTypeConn = (type) => {
+                    const key = String(type || '');
+                    if (typeConnCache.has(key)) return typeConnCache.get(key);
+                    const empty = { hasPrev: false, hasNext: false, hasOutput: false };
+                    if (!key || !Blockly.Blocks?.[key] || !workspace.current) {
+                        typeConnCache.set(key, empty);
+                        return empty;
+                    }
+                    let info = empty;
+                    try {
+                        Blockly.Events.disable();
+                        const tmp = workspace.current.newBlock(key);
+                        info = {
+                            hasPrev: !!tmp.previousConnection,
+                            hasNext: !!tmp.nextConnection,
+                            hasOutput: !!tmp.outputConnection
+                        };
+                        tmp.dispose(false);
+                    } catch {
+                        info = empty;
+                    } finally {
+                        Blockly.Events.enable();
+                    }
+                    typeConnCache.set(key, info);
+                    return info;
+                };
+
+                const isStatementType = (type) => {
+                    const c = getTypeConn(type);
+                    return c.hasPrev && !c.hasOutput;
+                };
+
+                const parentAllowsNext = (type) => {
+                    const c = getTypeConn(type);
+                    return c.hasNext;
+                };
+
+                const firstChildBlock = (node) => Array.from(node?.childNodes || []).find(
+                    (n) => n.nodeType === 1 && String(n.nodeName).toLowerCase() === 'block'
+                ) || null;
+
+                const getDirectStatements = (blockEl) => Array.from(blockEl?.childNodes || []).filter(
+                    (n) => n.nodeType === 1 && String(n.nodeName).toLowerCase() === 'statement'
+                );
+
+                const getNearestStatementTarget = (startBlockEl) => {
+                    let cursor = startBlockEl;
+                    while (cursor && String(cursor.nodeName).toLowerCase() === 'block') {
+                        const statements = getDirectStatements(cursor);
+                        const preferred = statements.find((s) => ['STACK', 'DO'].includes(String(s.getAttribute('name') || '').toUpperCase()));
+                        if (preferred) return preferred;
+                        if (statements.length > 0) return statements[0];
+
+                        // climb to parent block
+                        let p = cursor.parentNode;
+                        while (p && String(p.nodeName).toLowerCase() !== 'block') p = p.parentNode;
+                        cursor = p;
+                    }
+                    return null;
+                };
+
+                const appendBlockToStatementTail = (statementEl, blockEl) => {
+                    if (!statementEl || !blockEl) return false;
+                    const head = firstChildBlock(statementEl);
+                    if (!head) {
+                        statementEl.appendChild(blockEl);
+                        return true;
+                    }
+                    let tail = head;
+                    let guard = 0;
+                    while (guard < 1000) {
+                        const nextEl = Array.from(tail.childNodes || []).find(
+                            (n) => n.nodeType === 1 && String(n.nodeName).toLowerCase() === 'next'
+                        );
+                        const nextBlock = firstChildBlock(nextEl);
+                        if (!nextBlock) break;
+                        tail = nextBlock;
+                        guard += 1;
+                    }
+                    const tailType = tail.getAttribute('type') || '';
+                    if (!parentAllowsNext(tailType)) return false;
+                    const nextNode = fallbackDoc.createElement('next');
+                    nextNode.appendChild(blockEl);
+                    tail.appendChild(nextNode);
+                    return true;
+                };
+
+                const nextNodes = Array.from(fallbackDoc.getElementsByTagName('next'));
+                nextNodes.forEach((nextEl) => {
+                    const parentBlock = nextEl?.parentNode && String(nextEl.parentNode.nodeName).toLowerCase() === 'block'
+                        ? nextEl.parentNode
+                        : null;
+                    const childBlock = firstChildBlock(nextEl);
+                    if (!childBlock) {
+                        if (nextEl.parentNode) nextEl.parentNode.removeChild(nextEl);
+                        return;
+                    }
+
+                    const pType = parentBlock?.getAttribute('type') || '';
+                    const cType = childBlock.getAttribute('type') || '';
+                    const validDirectNext = parentAllowsNext(pType) && isStatementType(cType);
+
+                    if (validDirectNext) return;
+
+                    // Detach invalid next chain child
+                    nextEl.removeChild(childBlock);
+                    if (nextEl.parentNode) nextEl.parentNode.removeChild(nextEl);
+
+                    // Try to reattach to nearest statement input (STACK/DO preferred)
+                    let attached = false;
+                    if (isStatementType(cType) && parentBlock) {
+                        const stmtTarget = getNearestStatementTarget(parentBlock);
+                        if (stmtTarget) {
+                            attached = appendBlockToStatementTail(stmtTarget, childBlock);
+                        }
+                    }
+
+                    // Last resort: keep as top-level block
+                    if (!attached && xmlRoot) {
+                        xmlRoot.appendChild(childBlock);
+                    }
+                });
+
+                const fallbackXmlText = new XMLSerializer().serializeToString(fallbackDoc);
+                const fallbackXml = Blockly.utils.xml.textToDom(fallbackXmlText);
+                Blockly.Xml.domToWorkspace(fallbackXml, workspace.current);
+                console.warn('[Blockly AI] Recovered from invalid <next> chain with smart repair.');
+            }
 
             // 4. Find new blocks and center them
             const newBlocks = workspace.current.getAllBlocks(false).filter(b => !existingIds.has(b.id));
@@ -3330,8 +3814,41 @@ const BlocklyEditor = ({
         }
     };
 
+    const handleApplySuggestion = async (rawText) => {
+        const widgetSpecs = parseAddWidgetSpecs(rawText);
+        const createdWidgetIds = [];
+
+        if (widgetSpecs.length > 0 && typeof onCreateWidgetFromAi === 'function') {
+            for (const spec of widgetSpecs) {
+                try {
+                    const createdId = await Promise.resolve(onCreateWidgetFromAi(spec));
+                    if (createdId) createdWidgetIds.push(createdId);
+                } catch (e) {
+                    console.warn('[AI Advisor] Failed to create widget from suggestion:', e);
+                }
+            }
+        }
+
+        const xmlSnippets = parseBlockXmlSnippets(rawText);
+        if (xmlSnippets.length === 0) {
+            if (createdWidgetIds.length > 0) {
+                alert(`${createdWidgetIds.length} widget berhasil ditambahkan. Tidak ada block XML yang ditemukan.`);
+            } else {
+                alert('Tidak ada block XML atau widget directive yang bisa diterapkan.');
+            }
+            return;
+        }
+
+        for (const snippet of xmlSnippets) {
+            await handleApplyXml(snippet, {
+                autoCreateMissing: true,
+                fallbackWidgetId: createdWidgetIds[0] || ''
+            });
+        }
+    };
+
     return (
-        <div style={{
+        <div className="blockly-editor-root" style={{
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
@@ -3341,6 +3858,38 @@ const BlocklyEditor = ({
             overflow: 'hidden',
             position: 'relative'
         }}>
+            <style>{`
+                .blockly-editor-root .blocklyZoom > image,
+                .blockly-editor-root .blocklyTrash > image,
+                .blockly-editor-root .blocklyFlyoutButton > image {
+                    filter: brightness(0) saturate(100%) invert(20%) sepia(93%) saturate(2502%) hue-rotate(344deg) brightness(93%) contrast(100%) !important;
+                    opacity: 1 !important;
+                }
+
+                .blockly-editor-root .blocklyZoom > g > circle,
+                .blockly-editor-root .blocklyTrash > g > circle,
+                .blockly-editor-root .blocklyZoom > circle {
+                    fill: #fee2e2 !important;
+                    stroke: #dc2626 !important;
+                    stroke-width: 1.8 !important;
+                }
+
+                .blockly-editor-root .blocklyZoom > g > path,
+                .blockly-editor-root .blocklyTrash > g > path,
+                .blockly-editor-root .blocklyZoom > g > line,
+                .blockly-editor-root .blocklyZoom > line {
+                    stroke: #b91c1c !important;
+                    fill: #b91c1c !important;
+                    stroke-width: 2 !important;
+                }
+
+                .blockly-editor-root .blocklyZoom > g:hover > circle,
+                .blockly-editor-root .blocklyTrash > g:hover > circle,
+                .blockly-editor-root .blocklyZoom > g:focus > circle {
+                    fill: #fecaca !important;
+                    stroke: #ef4444 !important;
+                }
+            `}</style>
             {/* Header */}
             <div style={{
                 padding: '16px 24px',
@@ -3437,17 +3986,46 @@ const BlocklyEditor = ({
                     </button>
                     <button
                         onClick={saveWorkspace}
+                        disabled={isSavingLogic}
                         style={{
                             padding: '8px 20px',
-                            backgroundColor: '#3b82f6',
+                            backgroundColor: saveStatus === 'error' ? '#dc2626' : (saveStatus === 'saved' ? '#16a34a' : '#3b82f6'),
                             color: 'white',
                             border: 'none',
                             borderRadius: '6px',
                             fontSize: '0.8rem',
                             fontWeight: 700,
-                            cursor: 'pointer'
+                            cursor: isSavingLogic ? 'wait' : 'pointer',
+                            opacity: isSavingLogic ? 0.95 : 1,
+                            position: 'relative',
+                            overflow: 'hidden',
+                            minWidth: '170px'
                         }}
-                    >Save {activeScope === 'GLOBAL' ? 'Global' : 'Step'} Logic</button>
+                    >
+                        <span style={{ position: 'relative', zIndex: 2 }}>
+                            {saveStatus === 'saving'
+                                ? `Saving... ${saveProgress}%`
+                                : saveStatus === 'saved'
+                                    ? 'Saved'
+                                    : saveStatus === 'error'
+                                        ? 'Save Failed'
+                                        : `Save ${activeScope === 'GLOBAL' ? 'Global' : 'Step'} Logic`}
+                        </span>
+                        {saveStatus === 'saving' && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    bottom: 0,
+                                    height: '3px',
+                                    width: `${saveProgress}%`,
+                                    backgroundColor: 'rgba(255,255,255,0.9)',
+                                    transition: 'width 0.12s linear',
+                                    zIndex: 1
+                                }}
+                            />
+                        )}
+                    </button>
                     {onClose && (
                         <button
                             onClick={onClose}
@@ -3474,6 +4052,7 @@ const BlocklyEditor = ({
                 isOpen={isAiAdvisorOpen}
                 onClose={() => setIsAiAdvisorOpen(false)}
                 onApplyXml={handleApplyXml}
+                onApplySuggestion={handleApplySuggestion}
                 context={{
                     widgets: [...baseComponents, ...(currentStep?.components || [])].map(c => ({ id: c.id, type: c.type, name: c.name || c.props.label || c.props.text })),
                     variables: appVariables,

@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, X, Sparkles, User, Bot, Loader2, Trash2, BrainCircuit, Code, PlusCircle
 } from 'lucide-react';
-import { getIntegrationConnectors } from '../utils/database';
+import { getPrimaryAiConnector } from '../utils/database';
 import { getLogicAdvice } from '../utils/aiService';
 
-const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
+const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml, onApplySuggestion }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Halo! Saya Logic Advisor. Ada yang bisa saya bantu dengan logika blok Anda?', timestamp: new Date() }
   ]);
@@ -14,10 +14,14 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
   const [aiConnector, setAiConnector] = useState(null);
   const scrollRef = useRef(null);
 
+  const isProviderWithoutApiKey = (provider = '') => {
+    const p = String(provider || '').trim().toLowerCase();
+    return p.includes('ollama') || p === 'custom';
+  };
+
   useEffect(() => {
     const loadAiConfig = async () => {
-      const allConnectors = await getIntegrationConnectors();
-      const aiConn = allConnectors.find(c => c.type === 'AI_ASSISTANT');
+      const aiConn = await getPrimaryAiConnector();
       setAiConnector(aiConn);
     };
     if (isOpen) loadAiConfig();
@@ -30,16 +34,56 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
   }, [messages]);
 
   const parseXmlSuggestions = (text) => {
+    if (!text) return [];
+
+    const dedup = new Set();
+    const out = [];
+    const pushUnique = (raw) => {
+      const v = String(raw || '').trim();
+      if (!v) return;
+      if (dedup.has(v)) return;
+      dedup.add(v);
+      out.push(v);
+    };
+
+    // 1) Preferred wrapper
     const regex = /<block_xml>([\s\S]*?)<\/block_xml>/g;
-    const matches = [];
     let match;
     while ((match = regex.exec(text)) !== null) {
       let content = match[1].trim();
       // Remove markdown code blocks if the AI added them
       content = content.replace(/```xml\n?|```\n?/g, '').trim();
-      matches.push(content);
+      pushUnique(content);
     }
-    return matches;
+
+    // 2) Fallback: fenced xml without block_xml wrapper
+    const fencedXmlRegex = /```xml\s*([\s\S]*?)```/gi;
+    while ((match = fencedXmlRegex.exec(text)) !== null) {
+      const content = String(match[1] || '').trim();
+      if (content.startsWith('<xml') || content.includes('<block')) {
+        pushUnique(content);
+      }
+    }
+
+    // 3) Fallback: raw xml snippets
+    const rawXmlRegex = /(<xml[\s\S]*?<\/xml>)/gi;
+    while ((match = rawXmlRegex.exec(text)) !== null) {
+      pushUnique(match[1]);
+    }
+
+    return out;
+  };
+
+  const parseWidgetSuggestions = (text) => {
+    if (!text) return [];
+    const regex = /<add_widget>([\s\S]*?)<\/add_widget>/gi;
+    const out = [];
+    let match;
+    while ((match = regex.exec(String(text))) !== null) {
+      const content = String(match[1] || '').trim();
+      if (content) out.push(content);
+    }
+    return out;
   };
 
   const handleSend = async () => {
@@ -51,8 +95,17 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
     setIsLoading(true);
 
     try {
-      if (!aiConnector || !aiConnector.aiSettings?.apiKey) {
-        throw new Error('AI Connector not configured. Please add an AI Assistant integration.');
+      if (!aiConnector || !aiConnector.aiSettings) {
+        throw new Error('AI Connector belum dikonfigurasi. Buka Integrations > AI Settings.');
+      }
+
+      const provider = aiConnector.aiSettings?.provider || '';
+      const needsApiKey = !isProviderWithoutApiKey(provider);
+      if (needsApiKey && !aiConnector.aiSettings?.apiKey) {
+        throw new Error(`API Key untuk provider "${provider || 'AI'}" belum diisi.`);
+      }
+      if (!aiConnector.aiSettings?.modelId) {
+        throw new Error('Model AI belum dipilih di AI Settings.');
       }
 
       const history = messages.slice(-5).map(m => ({ role: m.role, content: m.content }));
@@ -111,7 +164,11 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
       >
         {messages.map((msg, idx) => {
           const suggestions = msg.role === 'assistant' ? parseXmlSuggestions(msg.content) : [];
-          const cleanContent = msg.content.replace(/<block_xml>[\s\S]*?<\/block_xml>/g, '').trim();
+          const widgetSuggestions = msg.role === 'assistant' ? parseWidgetSuggestions(msg.content) : [];
+          const cleanContent = msg.content
+            .replace(/<block_xml>[\s\S]*?<\/block_xml>/g, '')
+            .replace(/<add_widget>[\s\S]*?<\/add_widget>/g, '')
+            .trim();
 
           return (
             <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '4px' }}>
@@ -129,10 +186,30 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
                 border: msg.role === 'user' ? 'none' : '1px solid #e2e8f0',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}>
-                {cleanContent || (suggestions.length > 0 ? "I've suggested some blocks for you:" : "")}
+                {cleanContent || (suggestions.length > 0 || widgetSuggestions.length > 0 ? "I've suggested automation for you:" : "")}
                 
-                {suggestions.length > 0 && (
+                {(suggestions.length > 0 || widgetSuggestions.length > 0) && (
                   <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {!!onApplySuggestion && (
+                      <button
+                        onClick={() => onApplySuggestion(msg.content)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : '#ede9fe',
+                          color: msg.role === 'user' ? 'white' : '#4f46e5',
+                          border: 'none',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <PlusCircle size={14} /> Add Widget + Blocks
+                      </button>
+                    )}
                     {suggestions.map((xml, sIdx) => (
                       <button 
                         key={sIdx}
@@ -174,7 +251,7 @@ const AiLogicAdvisor = ({ isOpen, onClose, context, onApplyXml }) => {
           <input 
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder="Ask for logic help..."
             style={{ 
               width: '100%', 
