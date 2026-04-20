@@ -7,19 +7,26 @@ import { Code, X, Sparkles } from 'lucide-react';
 import AiLogicAdvisor from './AiLogicAdvisor';
 
 const BLOCK_COLORS = {
-    CONTROL: '#A0522D',     // Cokelat
-    LOGIC: '#00B295',       // Hijau
-    MATH: '#4A90E2',        // Biru
-    TEXT: '#D93B8A',        // Ungu
-    LISTS: '#FF4081',       // Pink/Magenta
-    VARIABLES: '#F57F17',   // Oranye
-    PROCEDURES: '#767676',  // Abu-abu
-    DICTIONARIES: '#912424',
-    COMPONENTS: '#00B295',
-    COLORS: '#767676',
+    // MIT App Inventor-like built-in palette
+    CONTROL: '#B18E35',     // Orange/Brown
+    LOGIC: '#77AB41',       // Dark Green
+    MATH: '#3F71B5',        // Dark Blue
+    TEXT: '#B32D5E',        // Pink
+    LISTS: '#49A6D4',       // Cyan
+    VARIABLES: '#D05F2D',   // Bright Orange
+    PROCEDURES: '#7C5385',  // Purple
+    COLORS: '#616161',      // Dark Gray
+    DICTIONARIES: '#2D6F8E',
+    // Component block palette
+    COMPONENTS: '#2FA59A',      // Component drawer/reference
+    COMPONENT_EVENT: '#D4A017', // Events (When ...)
+    COMPONENT_METHOD: '#5C3A8E', // Methods (call ...)
+    COMPONENT_SET: '#2E7D32',   // set property
+    COMPONENT_GET: '#66BB6A',   // get property
     MAVI_TRIGGER: '#10b981',
     MAVI_SCREEN: '#6366f1'
 };
+const BACKPACK_STORAGE_KEY = 'mavi_blockly_backpack_v1';
 
 const BlocklyEditor = ({
     steps,
@@ -43,11 +50,45 @@ const BlocklyEditor = ({
     const [isSavingLogic, setIsSavingLogic] = useState(false);
     const [saveProgress, setSaveProgress] = useState(0);
     const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+    const [warningCount, setWarningCount] = useState(0);
+    const [errorCount, setErrorCount] = useState(0);
+    const [isBackpackOpen, setIsBackpackOpen] = useState(false);
+    const [backpackItems, setBackpackItems] = useState([]);
 
     const saveProgressTimerRef = useRef(null);
     const saveResetTimerRef = useRef(null);
+    const latestBaseComponentsRef = useRef([]);
+    const latestStepComponentsRef = useRef([]);
+    const warningBlockIdsRef = useRef([]);
+    const errorBlockIdsRef = useRef([]);
+    const warningCursorRef = useRef(-1);
+    const errorCursorRef = useRef(-1);
+    const validationRunningRef = useRef(false);
 
     const currentStep = steps.find(s => s.id === currentStepId);
+
+    useEffect(() => {
+        latestBaseComponentsRef.current = baseComponents || [];
+        latestStepComponentsRef.current = currentStep?.components || [];
+    }, [baseComponents, currentStep]);
+
+    const getAllWidgetOptions = () => {
+        const allComps = [
+            ...(latestBaseComponentsRef.current || []),
+            ...(latestStepComponentsRef.current || [])
+        ];
+        if (allComps.length === 0) return [["No widgets", "none"]];
+
+        const seen = new Set();
+        const options = [];
+        allComps.forEach((c) => {
+            if (!c?.id || seen.has(c.id)) return;
+            seen.add(c.id);
+            const label = c.name || c.props?.label || c.props?.text || c.type || c.id;
+            options.push([String(label), String(c.id)]);
+        });
+        return options.length ? options : [["No widgets", "none"]];
+    };
 
     const parseAddWidgetSpecs = (text) => {
         const specs = [];
@@ -108,6 +149,109 @@ const BlocklyEditor = ({
         return snippets;
     };
 
+    const persistBackpack = (items) => {
+        try {
+            localStorage.setItem(BACKPACK_STORAGE_KEY, JSON.stringify(items));
+        } catch (_) { }
+    };
+
+    const updateWorkspaceDiagnostics = () => {
+        if (!workspace.current || validationRunningRef.current) return;
+
+        validationRunningRef.current = true;
+        try {
+            const ws = workspace.current;
+            const valueInputType = Blockly.inputTypes?.VALUE ?? 1;
+            const allBlocks = ws.getAllBlocks(false).filter(b => !b.isShadow?.());
+            const nextWarnings = [];
+            const nextErrors = [];
+
+            allBlocks.forEach((block) => {
+                const warnings = [];
+                const errors = [];
+
+                if (block.outputConnection && !block.outputConnection.targetConnection && !block.getParent()) {
+                    warnings.push('Value block is not connected.');
+                }
+                if (block.previousConnection && !block.previousConnection.targetConnection && !block.getParent()) {
+                    warnings.push('Statement block is not connected.');
+                }
+
+                (block.inputList || []).forEach((input) => {
+                    if (!input?.connection) return;
+                    if (input.type !== valueInputType) return;
+                    const connected = !!input.connection.targetBlock();
+                    const hasShadow = !!(input.connection.getShadowDom && input.connection.getShadowDom());
+                    if (!connected && !hasShadow) {
+                        const inputName = input.name ? ` "${input.name}"` : '';
+                        errors.push(`Missing required value${inputName}.`);
+                    }
+                });
+
+                if (errors.length > 0) nextErrors.push(block.id);
+                if (warnings.length > 0) nextWarnings.push(block.id);
+
+                const lines = [
+                    ...errors.map(m => `Error: ${m}`),
+                    ...warnings.map(m => `Warning: ${m}`)
+                ];
+                const text = lines.length > 0 ? lines.join('\n') : null;
+                try {
+                    block.setWarningText(text, 'mavi_validation');
+                } catch (_) {
+                    block.setWarningText(text);
+                }
+            });
+
+            warningBlockIdsRef.current = nextWarnings;
+            errorBlockIdsRef.current = nextErrors;
+            setWarningCount(nextWarnings.length);
+            setErrorCount(nextErrors.length);
+        } finally {
+            validationRunningRef.current = false;
+        }
+    };
+
+    const focusIssue = (kind, step = 1) => {
+        if (!workspace.current) return;
+        const idsRef = kind === 'error' ? errorBlockIdsRef : warningBlockIdsRef;
+        const cursorRef = kind === 'error' ? errorCursorRef : warningCursorRef;
+        const ids = idsRef.current || [];
+        if (ids.length === 0) return;
+        cursorRef.current = ((cursorRef.current + step) % ids.length + ids.length) % ids.length;
+        const blockId = ids[cursorRef.current];
+        const block = workspace.current.getBlockById(blockId);
+        if (!block) return;
+        block.select();
+        if (typeof workspace.current.centerOnBlock === 'function') {
+            workspace.current.centerOnBlock(blockId);
+        }
+    };
+
+    const showWarnings = () => {
+        if (errorBlockIdsRef.current.length > 0) {
+            focusIssue('error', 1);
+            return;
+        }
+        focusIssue('warning', 1);
+    };
+
+    const pasteBackpackItem = (item) => {
+        if (!workspace.current || !item?.xml) return;
+        try {
+            const dom = Blockly.utils.xml.textToDom(`<xml xmlns="https://developers.google.com/blockly/xml">${item.xml}</xml>`);
+            Blockly.Events.disable();
+            Blockly.Xml.domToWorkspace(dom, workspace.current);
+            updateWorkspaceDiagnostics();
+            setIsBackpackOpen(false);
+        } catch (e) {
+            console.error('Failed to paste backpack item:', e);
+            alert('Gagal menempel block dari Backpack.');
+        } finally {
+            Blockly.Events.enable();
+        }
+    };
+
     // 1. Initialize Workspace and Handle Lifecycle
     useEffect(() => {
         if (!blocklyDiv.current) return;
@@ -126,10 +270,55 @@ const BlocklyEditor = ({
             theme: Blockly.Themes.Modern
         });
 
+        // Custom context menu: Add to Backpack
+        const menuId = 'mavi_add_to_backpack';
+        try {
+            const registry = Blockly.ContextMenuRegistry?.registry;
+            if (registry && Blockly.ContextMenuRegistry?.ScopeType?.BLOCK) {
+                try { registry.unregister(menuId); } catch (_) { }
+                registry.register({
+                    id: menuId,
+                    scopeType: Blockly.ContextMenuRegistry.ScopeType.BLOCK,
+                    displayText: () => 'Add to Backpack',
+                    weight: 205,
+                    preconditionFn: (scope) => {
+                        const block = scope?.block;
+                        if (!block || block.isShadow?.()) return 'hidden';
+                        return 'enabled';
+                    },
+                    callback: (scope) => {
+                        const block = scope?.block;
+                        if (!block) return;
+                        try {
+                            const blockDom = Blockly.Xml.blockToDom(block, true);
+                            const xmlText = Blockly.Xml.domToText(blockDom);
+                            const label = String(block.toString?.() || block.type || 'Block');
+                            setBackpackItems((prev) => {
+                                const next = [{
+                                    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                                    label,
+                                    xml: xmlText
+                                }, ...prev].slice(0, 40);
+                                persistBackpack(next);
+                                return next;
+                            });
+                        } catch (e) {
+                            console.error('Failed to add block to backpack:', e);
+                            alert('Gagal menambahkan block ke Backpack.');
+                        }
+                    }
+                });
+            }
+        } catch (_) { }
+
         return () => {
             if (workspace.current) {
                 workspace.current.dispose();
             }
+            try {
+                const registry = Blockly.ContextMenuRegistry?.registry;
+                if (registry) registry.unregister(menuId);
+            } catch (_) { }
         };
     }, []);
 
@@ -214,8 +403,30 @@ const BlocklyEditor = ({
                 }
             }
             Blockly.Events.enable();
+            updateWorkspaceDiagnostics();
         }
     }, [currentStepId, activeScope, steps, appVariables, baseComponents]);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(BACKPACK_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            setBackpackItems(Array.isArray(parsed) ? parsed : []);
+        } catch (_) {
+            setBackpackItems([]);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!workspace.current) return;
+        const ws = workspace.current;
+        const onChange = () => updateWorkspaceDiagnostics();
+        ws.addChangeListener(onChange);
+        updateWorkspaceDiagnostics();
+        return () => {
+            try { ws.removeChangeListener(onChange); } catch (_) { }
+        };
+    }, [currentStepId, activeScope, steps, baseComponents, appVariables]);
 
     useEffect(() => {
         return () => {
@@ -283,7 +494,7 @@ const BlocklyEditor = ({
                 init: function () {
                     this.appendDummyInput().appendField("Complete App");
                     this.setPreviousStatement(true, null);
-                    this.setColour(160);
+                    this.setColour(BLOCK_COLORS.CONTROL);
                 }
             };
         }
@@ -301,7 +512,7 @@ const BlocklyEditor = ({
                         .appendField("to");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(290);
+                    this.setColour(BLOCK_COLORS.VARIABLES);
                 }
             };
         }
@@ -316,7 +527,7 @@ const BlocklyEditor = ({
                             return appVariables.length > 0 ? appVariables.map(v => [v.name, v.id]) : [["No variables", "none"]];
                         }), "VAR");
                     this.setOutput(true, null);
-                    this.setColour(290);
+                    this.setColour(BLOCK_COLORS.VARIABLES);
                 }
             }
         }
@@ -332,7 +543,7 @@ const BlocklyEditor = ({
                         }), "VAR")
                         .appendField("changes");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.VARIABLES);
                     this.setTooltip("Trigger logic when an application variable is modified.");
                 }
             };
@@ -344,7 +555,7 @@ const BlocklyEditor = ({
                 init: function () {
                     this.appendDummyInput().appendField("When App Starts");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(0);
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                 }
             };
         }
@@ -353,7 +564,7 @@ const BlocklyEditor = ({
                 init: function () {
                     this.appendDummyInput().appendField("When Screen is Entered");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(0);
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                 }
             };
         }
@@ -362,14 +573,14 @@ const BlocklyEditor = ({
                 init: function () {
                     this.appendDummyInput().appendField("When Screen is Exited");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(0);
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                 }
             };
         }
 
-        // --- MIT App Inventor Screen (Step) Parity Blocks ---
+        // --- MIT App Inventor Screen Parity Blocks ---
 
-        // 1. Step Initialize (Event)
+        // 1. Screen Initialize (Event)
         // --- Logic Data Blocks ---
         if (!Blockly.Blocks['get_event_parameter']) {
             Blockly.Blocks['get_event_parameter'] = {
@@ -385,96 +596,96 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['step_initialize']) {
             Blockly.Blocks['step_initialize'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Step.Initialize");
+                    this.appendDummyInput().appendField("When Screen.Initialize");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
-                    this.setTooltip("The Initialize event is run when the Step starts.");
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
+                    this.setTooltip("The Initialize event is run when the Screen starts.");
                     if (this.setHat) this.setHat(true);
                 }
             };
         }
 
-        // 2. Step BackPressed (Event)
+        // 2. Screen BackPressed (Event)
         if (!Blockly.Blocks['step_back_pressed']) {
             Blockly.Blocks['step_back_pressed'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Step.BackPressed");
+                    this.appendDummyInput().appendField("When Screen.BackPressed");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                     this.setTooltip("Device back button pressed.");
                     if (this.setHat) this.setHat(true);
                 }
             };
         }
 
-        // 3. Step ErrorOccurred (Event)
+        // 3. Screen ErrorOccurred (Event)
         if (!Blockly.Blocks['step_error_occurred']) {
             Blockly.Blocks['step_error_occurred'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("When Step.ErrorOccurred");
+                    this.appendDummyInput().appendField("When Screen.ErrorOccurred");
                     this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                     this.setTooltip("Event raised when an error occurs.");
                     if (this.setHat) this.setHat(true);
                 }
             };
         }
 
-        // 4. Set Step Property
+        // 4. Set Screen Property
         if (!Blockly.Blocks['set_step_property']) {
             Blockly.Blocks['set_step_property'] = {
                 init: function () {
                     const properties = [
-                        ['AboutStep', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
+                        ['AboutScreen', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
                         ['BackgroundImage', 'backgroundImage'], ['AlignHorizontal', 'alignHorizontal'],
                         ['AlignVertical', 'alignVertical'], ['Title', 'title'],
                         ['Scrollable', 'isScrollable'], ['ShowStatusBar', 'showStatusBar'],
-                        ['TitleVisible', 'titleVisible'], ['StepOrientation', 'orientation'],
+                        ['TitleVisible', 'titleVisible'], ['ScreenOrientation', 'orientation'],
                         ['HighContrast', 'highContrast'], ['AccentColor', 'accentColor'],
                         ['PrimaryColor', 'primaryColor'], ['AppName', 'appName']
                     ];
                     this.appendValueInput("VALUE")
                         .setCheck(null)
-                        .appendField("set Step")
+                        .appendField("set Screen")
                         .appendField(new Blockly.FieldDropdown(properties), "PROP")
                         .appendField("to");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_SET);
                 }
             };
         }
 
-        // 5. Get Step Property
+        // 5. Get Screen Property
         if (!Blockly.Blocks['get_step_property']) {
             Blockly.Blocks['get_step_property'] = {
                 init: function () {
                     const properties = [
-                        ['AboutStep', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
+                        ['AboutScreen', 'aboutInfo'], ['BackgroundColor', 'backgroundColor'],
                         ['BackgroundImage', 'backgroundImage'], ['AlignHorizontal', 'alignHorizontal'],
                         ['AlignVertical', 'alignVertical'], ['Title', 'title'],
                         ['Height', 'height'], ['Width', 'width'],
                         ['Platform', 'platform'], ['PlatformVersion', 'platformVersion']
                     ];
                     this.appendDummyInput()
-                        .appendField("Step")
+                        .appendField("Screen")
                         .appendField(new Blockly.FieldDropdown(properties), "PROP");
                     this.setOutput(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_GET);
                 }
             };
         }
 
-        // 6. Step Methods
+        // 6. Screen Methods
         if (!Blockly.Blocks['step_ask_permission']) {
             Blockly.Blocks['step_ask_permission'] = {
                 init: function () {
                     this.appendValueInput("PERMISSION")
                         .setCheck("String")
-                        .appendField("call Step.AskForPermission");
+                        .appendField("call Screen.AskForPermission");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(290);
+                    this.setColour(BLOCK_COLORS.COMPONENT_METHOD);
                 }
             };
         }
@@ -482,10 +693,10 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['step_hide_keyboard']) {
             Blockly.Blocks['step_hide_keyboard'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("call Step.HideKeyboard");
+                    this.appendDummyInput().appendField("call Screen.HideKeyboard");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(290);
+                    this.setColour(BLOCK_COLORS.COMPONENT_METHOD);
                 }
             };
         }
@@ -620,16 +831,9 @@ const BlocklyEditor = ({
             Blockly.Blocks['widget_selector'] = {
                 init: function () {
                     this.appendDummyInput()
-                        .appendField(new Blockly.FieldDropdown(() => {
-                            const allComps = [
-                                ...(baseComponents || []),
-                                ...(currentStep?.components || [])
-                            ];
-                            if (allComps.length === 0) return [["No widgets", "none"]];
-                            return allComps.map(c => [c.name || c.props.label || c.props.text || c.type, c.id]);
-                        }), "WIDGET");
+                        .appendField(new Blockly.FieldDropdown(() => getAllWidgetOptions()), "WIDGET");
                     this.setOutput(true, 'WidgetRef');
-                    this.setColour(160);
+                    this.setColour(BLOCK_COLORS.COMPONENTS);
                     this.setTooltip("Select any widget from the application.");
                 }
             };
@@ -659,7 +863,7 @@ const BlocklyEditor = ({
                     this.setInputsInline(true);
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_SET);
                     this.setTooltip("Set a property for any widget reference.");
                 }
             };
@@ -684,13 +888,37 @@ const BlocklyEditor = ({
                         .appendField(new Blockly.FieldDropdown(properties), "PROP");
                     this.setInputsInline(true);
                     this.setOutput(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_GET);
                     this.setTooltip("Get a property from any widget reference.");
                 }
             };
         }
 
-        // 4. Universal Method Caller
+        // 4. Compact Property Getter (App Inventor style: Button1 . Visible)
+        if (!Blockly.Blocks['get_widget_property_inline']) {
+            Blockly.Blocks['get_widget_property_inline'] = {
+                init: function () {
+                    const properties = [
+                        ['Text', 'text'], ['Value', 'value'], ['Visible', 'visible'],
+                        ['Enabled', 'enabled'], ['BackgroundColor', 'backgroundColor'],
+                        ['TextColor', 'textColor'], ['FontSize', 'fontSize'],
+                        ['Checked', 'checked'], ['Picture', 'picture'],
+                        ['Elements', 'elements'], ['AlternateText', 'alternateText'],
+                        ['Blink', 'isBlinking']
+                    ];
+                    this.appendDummyInput()
+                        .appendField(new Blockly.FieldDropdown(() => getAllWidgetOptions()), "WIDGET")
+                        .appendField(".")
+                        .appendField(new Blockly.FieldDropdown(properties), "PROP");
+                    this.setInputsInline(true);
+                    this.setOutput(true, null);
+                    this.setColour(BLOCK_COLORS.COMPONENT_GET);
+                    this.setTooltip("Get a property from a selected widget directly.");
+                }
+            };
+        }
+
+        // 5. Universal Method Caller
         if (!Blockly.Blocks['call_universal_method']) {
             Blockly.Blocks['call_universal_method'] = {
                 init: function () {
@@ -706,7 +934,7 @@ const BlocklyEditor = ({
                     this.setInputsInline(true);
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_METHOD);
                     this.setTooltip('Call method on any widget reference with argument list.');
                 }
             };
@@ -726,7 +954,7 @@ const BlocklyEditor = ({
                             }
                         ],
                         "output": null,
-                        "colour": 20,
+                        "colour": BLOCK_COLORS.COLORS,
                         "tooltip": "Basic color block."
                     });
                 }
@@ -982,14 +1210,14 @@ const BlocklyEditor = ({
             };
         }
 
-        // 9. Open another step
+        // 9. Open another screen
         if (!Blockly.Blocks['control_open_step']) {
             Blockly.Blocks['control_open_step'] = {
                 init: function () {
                     this.appendDummyInput()
-                        .appendField("open another step")
+                        .appendField("open another screen")
                         .appendField(new Blockly.FieldDropdown(() => {
-                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No steps", "none"]];
+                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No screens", "none"]];
                         }), "STEP");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
@@ -998,14 +1226,14 @@ const BlocklyEditor = ({
             };
         }
 
-        // 10. Open another step with value
+        // 10. Open another screen with value
         if (!Blockly.Blocks['control_open_step_with_value']) {
             Blockly.Blocks['control_open_step_with_value'] = {
                 init: function () {
                     this.appendDummyInput()
-                        .appendField("open another step")
+                        .appendField("open another screen")
                         .appendField(new Blockly.FieldDropdown(() => {
-                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No steps", "none"]];
+                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No screens", "none"]];
                         }), "STEP");
                     this.appendValueInput("VALUE")
                         .appendField("with start value");
@@ -1228,9 +1456,9 @@ const BlocklyEditor = ({
             Blockly.Blocks['transition_go_to_step'] = {
                 init: function () {
                     this.appendDummyInput()
-                        .appendField("Go To Step")
+                        .appendField("Go To Screen")
                         .appendField(new Blockly.FieldDropdown(() => {
-                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No steps", "none"]];
+                            return steps.length > 0 ? steps.map(s => [s.title || s.id, s.id]) : [["No screens", "none"]];
                         }), "STEP");
                     this.setPreviousStatement(true, null);
                     this.setColour(BLOCK_COLORS.MAVI_SCREEN);
@@ -1241,7 +1469,7 @@ const BlocklyEditor = ({
         if (!Blockly.Blocks['transition_next_step']) {
             Blockly.Blocks['transition_next_step'] = {
                 init: function () {
-                    this.appendDummyInput().appendField("Go To Next Step");
+                    this.appendDummyInput().appendField("Go To Next Screen");
                     this.setPreviousStatement(true, null);
                     this.setColour(BLOCK_COLORS.MAVI_SCREEN);
                 }
@@ -1586,6 +1814,11 @@ const BlocklyEditor = ({
             const prop = block.getFieldValue('PROP');
             return [`context.getWidgetProperty(${compId}, "${prop}")`, javascriptGenerator.ORDER_ATOMIC];
         };
+        javascriptGenerator.forBlock['get_widget_property_inline'] = function (block) {
+            const widgetId = block.getFieldValue('WIDGET') || 'none';
+            const prop = block.getFieldValue('PROP');
+            return [`context.getWidgetProperty("${widgetId}", "${prop}")`, javascriptGenerator.ORDER_ATOMIC];
+        };
         javascriptGenerator.forBlock['call_universal_method'] = function (block) {
             const compId = javascriptGenerator.valueToCode(block, 'WIDGET', javascriptGenerator.ORDER_ATOMIC) || 'null';
             const method = (block.getFieldValue('METHOD') || '').trim();
@@ -1663,7 +1896,7 @@ const BlocklyEditor = ({
                             this.appendDummyInput().appendField(`(${args.join(', ')})`).setAlign(Blockly.inputs.Align.RIGHT);
                         }
                         this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                        this.setColour(BLOCK_COLORS.COMPONENTS);
+                        this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                         this.setTooltip(`Triggered when ${label} ${evt.label}`);
                         this.setInputsInline(false);
                         // Hat styling
@@ -1687,7 +1920,7 @@ const BlocklyEditor = ({
                         .appendField("to");
                     this.setPreviousStatement(true, null);
                     this.setNextStatement(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_SET);
                 }
             };
             javascriptGenerator.forBlock[setterBlockName] = function (block) {
@@ -1705,7 +1938,7 @@ const BlocklyEditor = ({
                         .appendField(`${label}'s`)
                         .appendField(new Blockly.FieldDropdown(getComponentProperties(comp.type)), "PROP");
                     this.setOutput(true, null);
-                    this.setColour(BLOCK_COLORS.COMPONENTS);
+                    this.setColour(BLOCK_COLORS.COMPONENT_GET);
                     this.setTooltip(`Get a property value from ${label}`);
                 }
             };
@@ -1714,7 +1947,25 @@ const BlocklyEditor = ({
                 return [`context.getWidgetProperty("${comp.id}", "${prop}")`, javascriptGenerator.ORDER_ATOMIC];
             };
 
-            // 4. Method Blocks
+            // 4. Compact Property Block (Component . Property)
+            const inlinePropertyBlockName = `property_widget_${comp.id}`;
+            Blockly.Blocks[inlinePropertyBlockName] = {
+                init: function () {
+                    this.appendDummyInput()
+                        .appendField(label)
+                        .appendField(".")
+                        .appendField(new Blockly.FieldDropdown(getComponentProperties(comp.type)), "PROP");
+                    this.setOutput(true, null);
+                    this.setColour(BLOCK_COLORS.COMPONENT_GET);
+                    this.setTooltip(`Get ${label} property value.`);
+                }
+            };
+            javascriptGenerator.forBlock[inlinePropertyBlockName] = function (block) {
+                const prop = block.getFieldValue('PROP');
+                return [`context.getWidgetProperty("${comp.id}", "${prop}")`, javascriptGenerator.ORDER_ATOMIC];
+            };
+
+            // 5. Method Blocks
             const methods = getMethodsForComponent(comp.type);
             methods.forEach(method => {
                 const methodBlockName = `method_widget_${comp.id}_${method.id}`;
@@ -1733,7 +1984,7 @@ const BlocklyEditor = ({
 
                         this.setPreviousStatement(true, null);
                         this.setNextStatement(true, null);
-                        this.setColour(BLOCK_COLORS.COMPONENTS);
+                        this.setColour(BLOCK_COLORS.COMPONENT_METHOD);
                         this.setTooltip(`Call method ${method.label} on ${label}`);
                     }
                 };
@@ -1745,7 +1996,7 @@ const BlocklyEditor = ({
                 };
             });
 
-            // 5. Instance Block (Shortcut)
+            // 6. Instance Block (Shortcut)
             const instanceBlockName = `instance_widget_${comp.id}`;
             Blockly.Blocks[instanceBlockName] = {
                 init: function () {
@@ -2056,11 +2307,39 @@ const BlocklyEditor = ({
         if (type === 'MACHINE_STATUS') {
             return [{ id: 'StatusChanged', label: 'Status is Changed' }];
         }
+        if (type === 'MACHINE_ATTRIBUTE') {
+            return [{ id: 'ValueChanged', label: 'Value Changed', args: ['value'] }];
+        }
+        if (type === 'MACHINE_TIMELINE') {
+            return [{ id: 'RangeChanged', label: 'Range Changed', args: ['range'] }];
+        }
+        if (type === 'ANALYTIC') {
+            return [{ id: 'Refreshed', label: 'Refreshed' }];
+        }
+        if (type === 'AI_CHAT') {
+            return [
+                { id: 'MessageSent', label: 'Message Sent', args: ['message'] },
+                { id: 'ResponseReceived', label: 'Response Received', args: ['response'] },
+                { id: 'Error', label: 'Error', args: ['error'] }
+            ];
+        }
         if (type === 'CAMERA_SCANNER') {
             return [
                 { id: 'CodeScanned', label: 'detects a Code' },
                 { id: 'VisionError', label: 'encounters a Vision Error' }
             ];
+        }
+        if (['VIDEO', 'VIDEO_PLAYER'].includes(type)) {
+            return [
+                { id: 'Completed', label: 'Completed' },
+                { id: 'LoadError', label: 'Load Error', args: ['message'] }
+            ];
+        }
+        if (['DOCUMENT', 'PDF_VIEWER'].includes(type)) {
+            return [{ id: 'Loaded', label: 'Loaded' }];
+        }
+        if (['CAD_VIEWER', 'CAD'].includes(type)) {
+            return [{ id: 'ModelLoaded', label: 'Model Loaded' }];
         }
         if (type === 'EMBED_WEB') {
             return [
@@ -2069,6 +2348,24 @@ const BlocklyEditor = ({
                 { id: 'PageLoaded', label: 'PageLoaded' },
                 { id: 'WebViewStringChange', label: 'WebViewStringChange' }
             ];
+        }
+        if (type === 'WEBPAGE') {
+            return [
+                { id: 'PageLoaded', label: 'PageLoaded' },
+                { id: 'ErrorOccurred', label: 'ErrorOccurred' }
+            ];
+        }
+        if (type === 'GRID') {
+            return [{ id: 'CellTapped', label: 'Cell Tapped', args: ['row', 'col'] }];
+        }
+        if (type === 'STEP_TIME') {
+            return [{ id: 'Tick', label: 'Tick', args: ['elapsed'] }];
+        }
+        if (type === 'GAUGE') {
+            return [{ id: 'ValueChanged', label: 'Value Changed', args: ['value'] }];
+        }
+        if (['INTERACTIVE_TABLE', 'ADVANCED_TABLE'].includes(type)) {
+            return [{ id: 'RowSelected', label: 'Row Selected', args: ['row'] }];
         }
         if (type === 'SIGNATURE_PAD') {
             return [
@@ -2554,10 +2851,51 @@ const BlocklyEditor = ({
                 ['Fault Color', 'faultColor']
             ];
         }
+        if (type === 'MACHINE_ATTRIBUTE') {
+            return [
+                ...baseProps,
+                ['MachineId', 'machineId'],
+                ['Attribute', 'attribute'],
+                ['Value', 'value'],
+                ['Unit', 'unit']
+            ];
+        }
+        if (type === 'MACHINE_TIMELINE') {
+            return [
+                ...baseProps,
+                ['MachineId', 'machineId'],
+                ['TimeRange', 'timeRange']
+            ];
+        }
+        if (type === 'ANALYTIC') {
+            return [
+                ...baseProps,
+                ['AnalysisId', 'analysisId'],
+                ['Title', 'title'],
+                ['RefreshSeconds', 'refreshSeconds']
+            ];
+        }
+        if (type === 'AI_CHAT') {
+            return [
+                ...baseProps,
+                ['Title', 'title'],
+                ['Placeholder', 'placeholder'],
+                ['SystemPrompt', 'systemPrompt'],
+                ['Model', 'model']
+            ];
+        }
         if (type === 'PDF_VIEWER') {
             return [
                 ...baseProps,
                 ['PDF URL', 'url'],
+                ['Title', 'title'],
+                ['Page Number', 'page']
+            ];
+        }
+        if (type === 'DOCUMENT') {
+            return [
+                ...baseProps,
+                ['URL', 'url'],
                 ['Title', 'title'],
                 ['Page Number', 'page']
             ];
@@ -2568,6 +2906,27 @@ const BlocklyEditor = ({
                 ['Active', 'active'],
                 ['Last Result', 'lastResult'],
                 ['Scan Type', 'scanType']
+            ];
+        }
+        if (type === 'VIDEO') {
+            return [
+                ...baseProps,
+                ['VideoUrl', 'videoUrl'],
+                ['Url', 'url'],
+                ['Autoplay', 'autoplay'],
+                ['Controls', 'controls'],
+                ['Loop', 'loop'],
+                ['Muted', 'muted']
+            ];
+        }
+        if (type === 'CAD_VIEWER') {
+            return [
+                ...baseProps,
+                ['Source', 'source'],
+                ['FileUrl', 'fileUrl'],
+                ['Format', 'format'],
+                ['ShowGrid', 'showGrid'],
+                ['AutoRotate', 'autoRotate']
             ];
         }
         if (type === 'EMBED_WEB') {
@@ -2587,6 +2946,54 @@ const BlocklyEditor = ({
                 ['Width', 'width'],
                 ['HeightPercent', 'heightPercent'],
                 ['WidthPercent', 'widthPercent']
+            ];
+        }
+        if (type === 'WEBPAGE') {
+            return [
+                ['Visible', 'visible'],
+                ['Url', 'url'],
+                ['FollowLinks', 'followLinks'],
+                ['Height', 'height'],
+                ['Width', 'width'],
+                ['HeightPercent', 'heightPercent'],
+                ['WidthPercent', 'widthPercent']
+            ];
+        }
+        if (type === 'GRID') {
+            return [
+                ...baseProps,
+                ['Rows', 'rows'],
+                ['Cols', 'cols'],
+                ['ShowLines', 'showLines'],
+                ['CellPadding', 'cellPadding']
+            ];
+        }
+        if (type === 'STEP_TIME') {
+            return [
+                ...baseProps,
+                ['Mode', 'mode'],
+                ['Format', 'format'],
+                ['Value', 'value']
+            ];
+        }
+        if (type === 'GAUGE') {
+            return [
+                ...baseProps,
+                ['Value', 'value'],
+                ['Min', 'min'],
+                ['Max', 'max'],
+                ['Unit', 'unit'],
+                ['Label', 'label'],
+                ['Color', 'color']
+            ];
+        }
+        if (['INTERACTIVE_TABLE', 'ADVANCED_TABLE'].includes(type)) {
+            return [
+                ...baseProps,
+                ['TableId', 'tableId'],
+                ['Title', 'title'],
+                ['Columns', 'columns'],
+                ['BackgroundColor', 'backgroundColor']
             ];
         }
         if (type === 'SIGNATURE_PAD') {
@@ -3063,6 +3470,81 @@ const BlocklyEditor = ({
                 { id: 'StopLoading', label: 'StopLoading', args: [] }
             ];
         }
+        if (type === 'WEBPAGE') {
+            return [
+                { id: 'GoToUrl', label: 'GoToUrl', args: ['url'] },
+                { id: 'Reload', label: 'Reload', args: [] },
+                { id: 'GoBack', label: 'GoBack', args: [] }
+            ];
+        }
+        if (type === 'VIDEO') {
+            return [
+                { id: 'Play', label: 'Play', args: [] },
+                { id: 'Pause', label: 'Pause', args: [] },
+                { id: 'Stop', label: 'Stop', args: [] },
+                { id: 'SeekTo', label: 'SeekTo', args: ['ms'] }
+            ];
+        }
+        if (['DOCUMENT', 'PDF_VIEWER'].includes(type)) {
+            return [
+                { id: 'GoToPage', label: 'GoToPage', args: ['page'] },
+                { id: 'Reload', label: 'Reload', args: [] }
+            ];
+        }
+        if (type === 'CAD_VIEWER') {
+            return [
+                { id: 'LoadModel', label: 'LoadModel', args: ['source'] },
+                { id: 'ResetView', label: 'ResetView', args: [] },
+                { id: 'SetAutoRotate', label: 'SetAutoRotate', args: ['enabled'] }
+            ];
+        }
+        if (type === 'AI_CHAT') {
+            return [
+                { id: 'SendMessage', label: 'SendMessage', args: ['message'] },
+                { id: 'ClearChat', label: 'ClearChat', args: [] }
+            ];
+        }
+        if (type === 'ANALYTIC') {
+            return [
+                { id: 'Refresh', label: 'Refresh', args: [] },
+                { id: 'SetAnalysis', label: 'SetAnalysis', args: ['analysisId'] }
+            ];
+        }
+        if (type === 'GRID') {
+            return [
+                { id: 'SetCellText', label: 'SetCellText', args: ['row', 'col', 'text'] },
+                { id: 'Clear', label: 'Clear', args: [] }
+            ];
+        }
+        if (type === 'STEP_TIME') {
+            return [
+                { id: 'Start', label: 'Start', args: [] },
+                { id: 'Stop', label: 'Stop', args: [] },
+                { id: 'Reset', label: 'Reset', args: [] }
+            ];
+        }
+        if (type === 'MACHINE_ATTRIBUTE') {
+            return [
+                { id: 'Refresh', label: 'Refresh', args: [] }
+            ];
+        }
+        if (type === 'MACHINE_TIMELINE') {
+            return [
+                { id: 'SetRange', label: 'SetRange', args: ['range'] },
+                { id: 'Refresh', label: 'Refresh', args: [] }
+            ];
+        }
+        if (['INTERACTIVE_TABLE', 'ADVANCED_TABLE'].includes(type)) {
+            return [
+                { id: 'Refresh', label: 'Refresh', args: [] },
+                { id: 'SelectRow', label: 'SelectRow', args: ['index'] }
+            ];
+        }
+        if (type === 'GAUGE') {
+            return [
+                { id: 'SetValue', label: 'SetValue', args: ['value'] }
+            ];
+        }
         if (type === 'SIGNATURE_PAD') {
             return [
                 { id: 'Clear', label: 'Clear', args: [] },
@@ -3092,7 +3574,7 @@ const BlocklyEditor = ({
         const categories = [
             {
                 kind: 'category',
-                name: 'Step Triggers',
+                name: 'Screen Triggers',
                 colour: BLOCK_COLORS.MAVI_SCREEN,
                 contents: [
                     { kind: 'block', type: 'step_initialize' },
@@ -3306,7 +3788,7 @@ const BlocklyEditor = ({
             {
                 kind: 'category',
                 name: 'App Triggers',
-                colour: BLOCK_COLORS.COMPONENTS,
+                colour: BLOCK_COLORS.COMPONENT_EVENT,
                 contents: [
                     { kind: 'block', type: 'event_app_start' },
                     { kind: 'block', type: 'event_step_enter' },
@@ -3321,6 +3803,7 @@ const BlocklyEditor = ({
                     { kind: 'block', type: 'widget_selector' },
                     { kind: 'block', type: 'set_universal_property' },
                     { kind: 'block', type: 'get_universal_property' },
+                    { kind: 'block', type: 'get_widget_property_inline' },
                     { kind: 'block', type: 'call_universal_method' }
                 ]
             },
@@ -3349,6 +3832,7 @@ const BlocklyEditor = ({
                     { kind: 'block', type: `instance_widget_${comp.id}` },
                     { kind: 'block', type: `setter_widget_${comp.id}` },
                     { kind: 'block', type: `getter_widget_${comp.id}` },
+                    { kind: 'block', type: `property_widget_${comp.id}` },
                     ...getMethodsForComponent(comp.type).map(method => ({
                         kind: 'block',
                         type: `method_widget_${comp.id}_${method.id}`
@@ -3493,7 +3977,7 @@ const BlocklyEditor = ({
                                     this.appendDummyInput().appendField(`(${args.join(', ')})`).setAlign(Blockly.inputs.Align.RIGHT);
                                 }
                                 this.appendStatementInput("STACK").setCheck(null).appendField("do");
-                                this.setColour(BLOCK_COLORS.COMPONENTS);
+                                this.setColour(BLOCK_COLORS.COMPONENT_EVENT);
                                 this.setInputsInline(false);
                                 if (this.setHat) this.setHat(true);
                             }
@@ -3925,7 +4409,7 @@ const BlocklyEditor = ({
                                 boxShadow: activeScope === 'STEP' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                                 cursor: 'pointer'
                             }}
-                        >Current Step</button>
+                        >Current Screen</button>
                         <button
                             onClick={() => setActiveScope('GLOBAL')}
                             style={{
@@ -3943,6 +4427,67 @@ const BlocklyEditor = ({
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '4px 6px'
+                    }}>
+                        <button
+                            onClick={() => focusIssue('warning', -1)}
+                            disabled={warningCount === 0}
+                            style={{ border: 'none', background: 'transparent', cursor: warningCount ? 'pointer' : 'not-allowed', color: '#64748b', fontWeight: 700 }}
+                        >^</button>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#b45309' }}>WARN {warningCount}</span>
+                        <button
+                            onClick={() => focusIssue('warning', 1)}
+                            disabled={warningCount === 0}
+                            style={{ border: 'none', background: 'transparent', cursor: warningCount ? 'pointer' : 'not-allowed', color: '#64748b', fontWeight: 700 }}
+                        >v</button>
+                        <button
+                            onClick={() => focusIssue('error', -1)}
+                            disabled={errorCount === 0}
+                            style={{ border: 'none', background: 'transparent', cursor: errorCount ? 'pointer' : 'not-allowed', color: '#64748b', fontWeight: 700, marginLeft: '6px' }}
+                        >^</button>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#b91c1c' }}>ERR {errorCount}</span>
+                        <button
+                            onClick={() => focusIssue('error', 1)}
+                            disabled={errorCount === 0}
+                            style={{ border: 'none', background: 'transparent', cursor: errorCount ? 'pointer' : 'not-allowed', color: '#64748b', fontWeight: 700 }}
+                        >v</button>
+                        <button
+                            onClick={showWarnings}
+                            style={{
+                                marginLeft: '6px',
+                                padding: '4px 8px',
+                                border: '1px solid #d1d5db',
+                                backgroundColor: '#f8fafc',
+                                borderRadius: '5px',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                color: '#475569'
+                            }}
+                        >Show Warnings</button>
+                    </div>
+                    <button
+                        onClick={() => setIsBackpackOpen((v) => !v)}
+                        style={{
+                            padding: '8px 12px',
+                            backgroundColor: isBackpackOpen ? '#0f766e' : 'white',
+                            color: isBackpackOpen ? 'white' : '#0f766e',
+                            border: '1px solid #0f766e',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Backpack ({backpackItems.length})
+                    </button>
                     <button
                         onClick={() => setIsAiAdvisorOpen(!isAiAdvisorOpen)}
                         style={{
@@ -4009,7 +4554,7 @@ const BlocklyEditor = ({
                                     ? 'Saved'
                                     : saveStatus === 'error'
                                         ? 'Save Failed'
-                                        : `Save ${activeScope === 'GLOBAL' ? 'Global' : 'Step'} Logic`}
+                                        : `Save ${activeScope === 'GLOBAL' ? 'Global' : 'Screen'} Logic`}
                         </span>
                         {saveStatus === 'saving' && (
                             <div
@@ -4046,6 +4591,101 @@ const BlocklyEditor = ({
 
             {/* Workspace Div */}
             <div ref={blocklyDiv} style={{ flex: 1, height: '100%', width: '100%' }} />
+
+            {isBackpackOpen && (
+                <div style={{
+                    position: 'absolute',
+                    top: '84px',
+                    right: '20px',
+                    width: '320px',
+                    maxHeight: '420px',
+                    overflow: 'auto',
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    boxShadow: '0 10px 18px rgba(0,0,0,0.12)',
+                    zIndex: 30
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        borderBottom: '1px solid #e2e8f0',
+                        backgroundColor: '#f8fafc'
+                    }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>Backpack Blocks</div>
+                        <button
+                            onClick={() => {
+                                setBackpackItems([]);
+                                persistBackpack([]);
+                            }}
+                            style={{
+                                border: '1px solid #fecaca',
+                                backgroundColor: '#fff1f2',
+                                color: '#b91c1c',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                            }}
+                        >Clear</button>
+                    </div>
+                    <div style={{ padding: '10px' }}>
+                        {backpackItems.length === 0 && (
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                Belum ada block. Klik kanan pada block lalu pilih "Add to Backpack".
+                            </div>
+                        )}
+                        {backpackItems.map((item) => (
+                            <div key={item.id} style={{
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '8px',
+                                marginBottom: '8px',
+                                backgroundColor: '#ffffff'
+                            }}>
+                                <div style={{ fontSize: '0.75rem', color: '#1e293b', fontWeight: 700, marginBottom: '8px' }}>{item.label}</div>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button
+                                        onClick={() => pasteBackpackItem(item)}
+                                        style={{
+                                            border: '1px solid #99f6e4',
+                                            backgroundColor: '#ccfbf1',
+                                            color: '#0f766e',
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >Paste</button>
+                                    <button
+                                        onClick={() => {
+                                            setBackpackItems((prev) => {
+                                                const next = prev.filter(p => p.id !== item.id);
+                                                persistBackpack(next);
+                                                return next;
+                                            });
+                                        }}
+                                        style={{
+                                            border: '1px solid #fecaca',
+                                            backgroundColor: '#fff1f2',
+                                            color: '#b91c1c',
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >Remove</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* AI Advisor Component */}
             <AiLogicAdvisor

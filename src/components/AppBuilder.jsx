@@ -730,6 +730,83 @@ const COMPONENT_TYPES = {
     VISION_DETECTOR: { id: 'VISION_DETECTOR', label: 'Vision AI OCR', icon: Eye, defaultProps: { label: 'Scanner', triggers: [], visibilityCondition: null, rotation: 0 } },
     IOT_DEVICE: { id: 'IOT_DEVICE', label: 'IoT Connector', icon: Cpu, defaultProps: { topic: '', triggers: [], visibilityCondition: null, rotation: 0 } },
     INTERACTIVE_TABLE: { id: 'INTERACTIVE_TABLE', label: 'Data Table', icon: Table, defaultProps: { tableId: '', triggers: [], visibilityCondition: null, rotation: 0 } },
+    ANALYTIC: {
+        id: 'ANALYTIC',
+        label: 'Analytic',
+        icon: BarChart3,
+        defaultSize: { w: 320, h: 180 },
+        defaultProps: { analysisId: '', title: 'Live Analysis', refreshSeconds: 10, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    VIDEO: {
+        id: 'VIDEO',
+        label: 'Video',
+        icon: Video,
+        defaultSize: { w: 320, h: 180 },
+        defaultProps: { videoUrl: '', url: '', autoplay: false, controls: true, loop: false, muted: false, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    DOCUMENT: {
+        id: 'DOCUMENT',
+        label: 'Document',
+        icon: FileText,
+        defaultSize: { w: 320, h: 220 },
+        defaultProps: { url: '', title: 'Document', page: 1, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    AI_CHAT: {
+        id: 'AI_CHAT',
+        label: 'AI Chat',
+        icon: Sparkles,
+        defaultSize: { w: 320, h: 260 },
+        defaultProps: { title: 'AI Assistant', placeholder: 'Ask anything...', systemPrompt: '', model: 'gpt-5.2', visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    CAD_VIEWER: {
+        id: 'CAD_VIEWER',
+        label: 'CAD',
+        icon: Layers,
+        defaultSize: { w: 320, h: 220 },
+        defaultProps: { source: '', fileUrl: '', title: 'CAD Viewer', format: 'STL', backgroundColor: '#0f172a', showGrid: true, autoRotate: false, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    WEBPAGE: {
+        id: 'WEBPAGE',
+        label: 'Webpage',
+        icon: Globe,
+        defaultSize: { w: 320, h: 220 },
+        defaultProps: { url: '', followLinks: true, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    GRID: {
+        id: 'GRID',
+        label: 'Grid',
+        icon: Grid3X3,
+        defaultSize: { w: 320, h: 180 },
+        defaultProps: { rows: 3, cols: 3, showLines: true, cellPadding: 8, visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    MACHINE_ATTRIBUTE: {
+        id: 'MACHINE_ATTRIBUTE',
+        label: 'Machine Attribute',
+        icon: Cpu,
+        defaultSize: { w: 220, h: 90 },
+        defaultProps: { machineId: '', attribute: 'Temperature', value: '--', unit: '', visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    MACHINE_TIMELINE: {
+        id: 'MACHINE_TIMELINE',
+        label: 'Machine Timeline',
+        icon: Activity,
+        defaultSize: { w: 320, h: 120 },
+        defaultProps: { machineId: '', timeRange: '8h', visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    STEP_TIME: {
+        id: 'STEP_TIME',
+        label: 'Step Time',
+        icon: Timer,
+        defaultSize: { w: 180, h: 56 },
+        defaultProps: { mode: 'ELAPSED', format: 'mm:ss', value: '00:00', visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
+    GAUGE: {
+        id: 'GAUGE',
+        label: 'Gauge',
+        icon: Gauge,
+        defaultSize: { w: 240, h: 90 },
+        defaultProps: { value: 0, min: 0, max: 100, unit: '%', color: '#3b82f6', label: 'KPI', visible: true, triggers: [], visibilityCondition: null, rotation: 0 }
+    },
 
     // Industrial Embedded Widgets (Tulip Parity)
     MACHINE_STATUS: {
@@ -892,7 +969,7 @@ const COMPONENT_TYPES = {
     API_CONNECTOR: { id: 'API_CONNECTOR', label: 'API Connector', icon: Globe, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
     LOGIC_NODE: { id: 'LOGIC_NODE', label: 'Logic Node', icon: Blocks, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
     EVENT_TRIGGER: { id: 'EVENT_TRIGGER', label: 'Event Trigger', icon: Zap, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
-    BARCODE: { id: 'BARCODE', label: 'Barcode', icon: ScanLine, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
+    BARCODE: { id: 'BARCODE', label: 'Barcode', icon: ScanLine, defaultSize: { w: 220, h: 90 }, defaultProps: { value: '1234567890', format: 'QR_CODE', showText: true, foregroundColor: '#111827', backgroundColor: '#ffffff', triggers: [], visibilityCondition: null, rotation: 0 } },
     FILE_UPLOAD: { id: 'FILE_UPLOAD', label: 'File Upload', icon: Upload, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
     MEDIA_RECORDER: { id: 'MEDIA_RECORDER', label: 'Media Recorder', icon: Mic, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
     BARCODE_SCANNER_NON_VISIBLE: { id: 'BARCODE_SCANNER_NON_VISIBLE', label: 'Scanner (Non-visible)', icon: ScanLine, defaultProps: { triggers: [], visibilityCondition: null, rotation: 0 } },
@@ -970,6 +1047,16 @@ const CATEGORIZED_COMPONENTS = {
         icon: BarChart2,
         color: '#8b5cf6',
         types: ['CHART', 'CHART_DATA_2D', 'TRENDLINE']
+    },
+    EMBEDDED_WIDGETS: {
+        label: 'Embedded Widgets',
+        icon: LayoutDashboard,
+        color: '#0ea5e9',
+        types: [
+            'ANALYTIC', 'IMAGE', 'VIDEO', 'DOCUMENT', 'AI_CHAT', 'CAD_VIEWER', 'WEBPAGE',
+            'GAUGE', 'GRID', 'MACHINE_ATTRIBUTE', 'MACHINE_STATUS', 'MACHINE_TIMELINE',
+            'INTERACTIVE_TABLE', 'BARCODE', 'STEP_TIME'
+        ]
     },
     DRAWING_ANIMATION: {
         label: 'Drawing and Animation',
@@ -1248,6 +1335,8 @@ const AppBuilder = () => {
         anonKey: '',
         status: 'DISCONNECTED'
     });
+    const triggerQueueRef = useRef([]);
+    const triggerQueueRunningRef = useRef(false);
 
     useEffect(() => {
         try {
@@ -1266,6 +1355,10 @@ const AppBuilder = () => {
     }, []);
 
     const fileInputRef = useRef(null);
+
+    const getDefaultStopOnError = (eventId = '') => {
+        return ['ON_APP_START', 'ON_APP_COMPLETE', 'ON_APP_CANCEL', 'ON_STEP_ENTER', 'ON_STEP_EXIT'].includes(String(eventId || ''));
+    };
 
     const toggleSelection = (id, isMulti = false) => {
         if (isMulti) {
@@ -3191,8 +3284,8 @@ const AppBuilder = () => {
         return true;
     };
 
-    const executeAction = (action) => {
-        if (!action) return;
+    const executeAction = async (action, runtimeCtx = null) => {
+        if (!action) return true;
         try {
             switch (action.type) {
                 case 'SET_VARIABLE': {
@@ -3240,11 +3333,15 @@ const AppBuilder = () => {
                 }
                 case 'GO_TO_STEP':
                     setCurrentStepId(action.payload.stepId || action.payload.targetId);
+                    if (runtimeCtx) runtimeCtx.transitionExecuted = true;
                     break;
                 case 'NEXT_STEP': {
                     const idx = steps.findIndex(s => s.id === currentStepId);
                     const proceedToNext = () => {
-                        if (idx < steps.length - 1) setCurrentStepId(steps[idx + 1].id);
+                        if (idx < steps.length - 1) {
+                            setCurrentStepId(steps[idx + 1].id);
+                            if (runtimeCtx) runtimeCtx.transitionExecuted = true;
+                        }
                     };
 
                     const activeStep = steps.find(s => s.id === currentStepId);
@@ -3254,14 +3351,16 @@ const AppBuilder = () => {
                         && submitCfg.autoSubmitOnNext;
 
                     if (shouldAutoSubmit) {
-                        submitFormStepToTable(activeStep)
-                            .then(() => proceedToNext())
-                            .catch((err) => {
-                                console.error('[Form Submit] Auto submit failed:', err);
-                                if (viewMode === 'PREVIEW') {
-                                    alert(`Form submit gagal: ${err?.message || 'unknown error'}`);
-                                }
-                            });
+                        try {
+                            await submitFormStepToTable(activeStep);
+                            proceedToNext();
+                        } catch (err) {
+                            console.error('[Form Submit] Auto submit failed:', err);
+                            if (viewMode === 'PREVIEW') {
+                                alert(`Form submit gagal: ${err?.message || 'unknown error'}`);
+                            }
+                            throw err;
+                        }
                     } else {
                         proceedToNext();
                     }
@@ -3269,7 +3368,10 @@ const AppBuilder = () => {
                 }
                 case 'PREV_STEP': {
                     const idx = steps.findIndex(s => s.id === currentStepId);
-                    if (idx > 0) setCurrentStepId(steps[idx - 1].id);
+                    if (idx > 0) {
+                        setCurrentStepId(steps[idx - 1].id);
+                        if (runtimeCtx) runtimeCtx.transitionExecuted = true;
+                    }
                     break;
                 }
                 case 'CREATE_RECORD':
@@ -3376,6 +3478,7 @@ const AppBuilder = () => {
                         setAppStartTime(new Date().toISOString());
                         setLastStepStartTime(Date.now());
                         setStepTimeLogs([]);
+                        if (runtimeCtx) runtimeCtx.transitionExecuted = true;
                     }
                     break;
                 }
@@ -3449,20 +3552,25 @@ const AppBuilder = () => {
                 default:
                     console.warn(`Unhandled action type: ${action.type}`);
             }
+            return true;
         } catch (err) {
             console.error("Action execution error:", err, action);
+            return false;
         }
     };
 
-    const executeTrigger = (trigger) => {
-        if (!trigger || trigger.enabled === false) return;
+    const executeTrigger = async (trigger, runtimeCtx = null) => {
+        if (!trigger || trigger.enabled === false) return true;
 
         console.log(`[Trigger Engine] Executing: ${trigger.name}`);
+        const stopOnError = (typeof trigger.stopOnError === 'boolean')
+            ? trigger.stopOnError
+            : !!runtimeCtx?.stopRemainingOnError;
 
         // Handle modern multi-clause structure
         if (trigger.clauses && trigger.clauses.length > 0) {
             for (const clause of trigger.clauses) {
-                const matchType = clause.conditionMatch || 'ALL';
+                const matchType = clause.match || clause.conditionMatch || 'ALL';
                 let passed = true;
 
                 if (clause.conditions && clause.conditions.length > 0) {
@@ -3476,9 +3584,16 @@ const AppBuilder = () => {
                 if (passed) {
                     console.log(`[Trigger Engine] Clause matched in "${trigger.name}", executing actions.`);
                     if (clause.actions) {
-                        clause.actions.forEach(action => executeAction(action));
+                        for (const action of clause.actions) {
+                            const ok = await executeAction(action, runtimeCtx);
+                            if (!ok) {
+                                if (stopOnError) throw new Error(`Trigger action failed: ${trigger.name}`);
+                                return false;
+                            }
+                            if (runtimeCtx?.transitionExecuted) return true;
+                        }
                     }
-                    return; // Stop after first successful clause match (If-Then-Else logic)
+                    return true; // Stop after first successful clause match (If-Then-Else logic)
                 }
             }
         }
@@ -3486,7 +3601,14 @@ const AppBuilder = () => {
         // Execute Else actions if none of the clauses matched
         if (trigger.elseActions && trigger.elseActions.length > 0) {
             console.log(`[Trigger Engine] Executing ELSE actions for: ${trigger.name}`);
-            trigger.elseActions.forEach(action => executeAction(action));
+            for (const action of trigger.elseActions) {
+                const ok = await executeAction(action, runtimeCtx);
+                if (!ok) {
+                    if (stopOnError) throw new Error(`Trigger else action failed: ${trigger.name}`);
+                    return false;
+                }
+                if (runtimeCtx?.transitionExecuted) return true;
+            }
         }
 
         // Backward compatibility for legacy flat triggers
@@ -3498,11 +3620,74 @@ const AppBuilder = () => {
             }
 
             if (passed) {
-                trigger.actions.forEach(action => executeAction(action));
+                for (const action of trigger.actions) {
+                    const ok = await executeAction(action, runtimeCtx);
+                    if (!ok) {
+                        if (stopOnError) throw new Error(`Trigger action failed: ${trigger.name}`);
+                        return false;
+                    }
+                    if (runtimeCtx?.transitionExecuted) return true;
+                }
             } else if (trigger.elseActions) {
-                trigger.elseActions.forEach(action => executeAction(action));
+                for (const action of trigger.elseActions) {
+                    const ok = await executeAction(action, runtimeCtx);
+                    if (!ok) {
+                        if (stopOnError) throw new Error(`Trigger else action failed: ${trigger.name}`);
+                        return false;
+                    }
+                    if (runtimeCtx?.transitionExecuted) return true;
+                }
             }
         }
+        return true;
+    };
+
+    const processTriggerQueue = async () => {
+        if (triggerQueueRunningRef.current) return;
+        triggerQueueRunningRef.current = true;
+        try {
+            while (triggerQueueRef.current.length > 0) {
+                const evt = triggerQueueRef.current.shift();
+                if (!evt || !Array.isArray(evt.triggers) || evt.triggers.length === 0) continue;
+
+                const runtimeCtx = {
+                    stopRemainingOnError: !!evt.stopOnErrorDefault,
+                    transitionExecuted: false
+                };
+
+                for (const trig of evt.triggers) {
+                    if (runtimeCtx.transitionExecuted) break;
+                    try {
+                        await executeTrigger(trig, runtimeCtx);
+                    } catch (err) {
+                        console.error('[Trigger Queue] Trigger failed:', err);
+                        if (runtimeCtx.stopRemainingOnError) break;
+                    }
+                }
+
+                // Tulip-like behavior: once a transition executes, clear pending queue.
+                if (runtimeCtx.transitionExecuted) {
+                    triggerQueueRef.current = [];
+                }
+            }
+        } finally {
+            triggerQueueRunningRef.current = false;
+        }
+    };
+
+    const enqueueTriggerEvent = ({ eventId = '', triggers = [], stopOnErrorDefault = false }) => {
+        const safeTriggers = (triggers || []).filter(Boolean);
+        if (safeTriggers.length === 0) return;
+        if (triggerQueueRef.current.length >= 100) {
+            console.warn('[Trigger Queue] Queue full (100). New trigger event dropped.');
+            return;
+        }
+        triggerQueueRef.current.push({
+            eventId,
+            triggers: safeTriggers,
+            stopOnErrorDefault
+        });
+        processTriggerQueue();
     };
 
     const executeBlocklyLogic = (triggerKey, payload = {}) => {
@@ -4176,23 +4361,53 @@ const AppBuilder = () => {
 
         // Handle Action property (e.g. for Mavi Template buttons)
         if (eventId === 'ON_CLICK' && comp.props.action) {
-            executeAction({ type: comp.props.action, payload: { stepId: comp.props.targetStepId } });
+            enqueueTriggerEvent({
+                eventId,
+                triggers: [{
+                    name: `${comp.id} action`,
+                    enabled: true,
+                    stopOnError: false,
+                    clauses: [{
+                        id: `auto_${Date.now()}`,
+                        match: 'ALL',
+                        conditions: [],
+                        actions: [{ type: comp.props.action, payload: { stepId: comp.props.targetStepId } }]
+                    }]
+                }],
+                stopOnErrorDefault: false
+            });
         }
 
         // Handle formal Triggers
         if (comp.props.triggers) {
-            comp.props.triggers
+            const widgetTriggers = comp.props.triggers
                 .filter(t => t.event === eventId || (!t.event && (['BUTTON', 'COMPLETE_BUTTON', 'MENU'].includes(comp.type) ? eventId === 'ON_CLICK' : eventId === 'ON_CHANGE')))
-                .forEach(executeTrigger);
+                .map(t => ({
+                    ...t,
+                    stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : false
+                }));
+            enqueueTriggerEvent({
+                eventId,
+                triggers: widgetTriggers,
+                stopOnErrorDefault: false
+            });
         }
 
         // Step-level machine/device trigger
         if (DEVICE_TRIGGER_COMPONENT_TYPES.includes(comp.type) && ['ON_CHANGE', 'ON_CLICK'].includes(eventId)) {
             const activeStep = steps.find(s => s.id === currentStepId);
             if (activeStep?.triggers) {
-                activeStep.triggers
+                const deviceTriggers = activeStep.triggers
                     .filter(t => t.event === 'ON_DEVICE_INPUT')
-                    .forEach(executeTrigger);
+                    .map(t => ({
+                        ...t,
+                        stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : false
+                    }));
+                enqueueTriggerEvent({
+                    eventId: 'ON_DEVICE_INPUT',
+                    triggers: deviceTriggers,
+                    stopOnErrorDefault: false
+                });
             }
         }
     };
@@ -4214,9 +4429,17 @@ const AppBuilder = () => {
         // 2. Original Trigger Engine: ON_STEP_EXIT for the previous step
         const prevStep = steps.find(s => s.id === lastStepIdRef.current);
         if (prevStep && prevStep.triggers) {
-            prevStep.triggers
+            const exitTriggers = prevStep.triggers
                 .filter(t => t.event === 'ON_STEP_EXIT')
-                .forEach(executeTrigger);
+                .map(t => ({
+                    ...t,
+                    stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : true
+                }));
+            enqueueTriggerEvent({
+                eventId: 'ON_STEP_EXIT',
+                triggers: exitTriggers,
+                stopOnErrorDefault: true
+            });
         }
 
         // 3. Blockly Global Logic: ON_STEP_ENTER
@@ -4226,9 +4449,17 @@ const AppBuilder = () => {
         // 4. Original Trigger Engine: ON_STEP_ENTER for the new step
         const newStep = steps.find(s => s.id === currentStepId);
         if (newStep && newStep.triggers) {
-            newStep.triggers
+            const enterTriggers = newStep.triggers
                 .filter(t => t.event === 'ON_STEP_ENTER')
-                .forEach(executeTrigger);
+                .map(t => ({
+                    ...t,
+                    stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : true
+                }));
+            enqueueTriggerEvent({
+                eventId: 'ON_STEP_ENTER',
+                triggers: enterTriggers,
+                stopOnErrorDefault: true
+            });
         }
 
         lastStepIdRef.current = currentStepId;
@@ -4242,7 +4473,11 @@ const AppBuilder = () => {
             // 2. Original Trigger Engine: ON_APP_START
             appTriggers
                 .filter(t => t.event === 'ON_APP_START')
-                .forEach(executeTrigger);
+                .forEach((trig) => enqueueTriggerEvent({
+                    eventId: 'ON_APP_START',
+                    triggers: [{ ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : true }],
+                    stopOnErrorDefault: true
+                }));
         }
     }, [viewMode]);
 
@@ -4272,7 +4507,11 @@ const AppBuilder = () => {
             if (trig.event === 'TIMER' && trig.timerInterval > 0) {
                 const interval = setInterval(() => {
                     console.log(`[Timer] Firing App trigger: ${trig.name}`);
-                    executeTrigger(trig);
+                    enqueueTriggerEvent({
+                        eventId: 'TIMER',
+                        triggers: [{ ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : false }],
+                        stopOnErrorDefault: false
+                    });
                 }, trig.timerInterval * 1000);
                 timerRefs.push(interval);
             }
@@ -4285,7 +4524,11 @@ const AppBuilder = () => {
                 if (trig.event === 'TIMER' && trig.timerInterval > 0) {
                     const interval = setInterval(() => {
                         console.log(`[Timer] Firing Step trigger: ${trig.name}`);
-                        executeTrigger(trig);
+                        enqueueTriggerEvent({
+                            eventId: 'TIMER',
+                            triggers: [{ ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : false }],
+                            stopOnErrorDefault: false
+                        });
                     }, trig.timerInterval * 1000);
                     timerRefs.push(interval);
                 }
@@ -4312,11 +4555,13 @@ const AppBuilder = () => {
             setAppStartTime(new Date().toISOString());
             setLastStepStartTime(Date.now());
             setStepTimeLogs([]);
+            triggerQueueRef.current = [];
         } else {
             // Cleanup on exit
             setAppExecutionId(null);
             setAppStartTime(null);
             setLastStepStartTime(null);
+            triggerQueueRef.current = [];
         }
     }, [viewMode]);
 
@@ -7006,6 +7251,75 @@ const AppBuilder = () => {
                         </div>
                     </div>
                 );
+            case 'STEP_TIME':
+                return (
+                    <div style={{
+                        width: '100%', height: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#f8fafc'
+                    }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>
+                                {comp.props.mode || 'ELAPSED'}
+                            </div>
+                            <div style={{ fontSize: '1.4rem', color: '#0f172a', fontWeight: 900 }}>{comp.props.value || '00:00'}</div>
+                        </div>
+                    </div>
+                );
+            case 'ANALYTIC':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontSize: '0.72rem', fontWeight: 800, color: '#334155' }}>
+                            {comp.props.title || 'Live Analysis'}
+                        </div>
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>
+                            Dashboard Analysis Embed
+                        </div>
+                    </div>
+                );
+            case 'BARCODE':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: comp.props.backgroundColor || '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', gap: '8px' }}>
+                        <div style={{ width: '100%', height: '45px', background: `repeating-linear-gradient(90deg, ${comp.props.foregroundColor || '#111827'} 0 2px, transparent 2px 5px)` }} />
+                        {comp.props.showText !== false && (
+                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>{comp.props.value || '1234567890'}</div>
+                        )}
+                    </div>
+                );
+            case 'MACHINE_ATTRIBUTE':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '12px' }}>
+                        <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>{comp.props.machineId || 'Machine'}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#334155', fontWeight: 700 }}>{comp.props.attribute || 'Attribute'}</div>
+                        <div style={{ fontSize: '1.3rem', color: '#0f172a', fontWeight: 900 }}>{comp.props.value ?? '--'} <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{comp.props.unit || ''}</span></div>
+                    </div>
+                );
+            case 'MACHINE_TIMELINE':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#ffffff', padding: '10px', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginBottom: '8px' }}>Machine Timeline ({comp.props.timeRange || '8h'})</div>
+                        <div style={{ flex: 1, borderRadius: '6px', background: 'linear-gradient(90deg,#22c55e 0 25%,#eab308 25% 45%,#ef4444 45% 55%,#22c55e 55% 100%)' }} />
+                    </div>
+                );
+            case 'GRID':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#ffffff', display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, Number(comp.props.cols || 3))}, 1fr)`, gridTemplateRows: `repeat(${Math.max(1, Number(comp.props.rows || 3))}, 1fr)`, gap: comp.props.showLines === false ? 0 : 1, padding: Number(comp.props.cellPadding ?? 2), backgroundClip: 'padding-box' }}>
+                        {Array.from({ length: Math.max(1, Number(comp.props.rows || 3)) * Math.max(1, Number(comp.props.cols || 3)) }).map((_, idx) => (
+                            <div key={idx} style={{ border: comp.props.showLines === false ? 'none' : '1px solid #e2e8f0', borderRadius: '4px', backgroundColor: '#f8fafc' }} />
+                        ))}
+                    </div>
+                );
+            case 'AI_CHAT':
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontSize: '0.72rem', fontWeight: 800, color: '#334155' }}>{comp.props.title || 'AI Assistant'}</div>
+                        <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ alignSelf: 'flex-start', backgroundColor: '#f1f5f9', color: '#334155', borderRadius: '10px', padding: '6px 8px', fontSize: '0.72rem' }}>How can I help?</div>
+                            <div style={{ alignSelf: 'flex-end', backgroundColor: '#dbeafe', color: '#1e3a8a', borderRadius: '10px', padding: '6px 8px', fontSize: '0.72rem' }}>Show machine status</div>
+                        </div>
+                        <div style={{ padding: '8px', borderTop: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.72rem' }}>{comp.props.placeholder || 'Ask anything...'}</div>
+                    </div>
+                );
             case 'INTERACTIVE_TABLE':
             case 'ADVANCED_TABLE':
                 return (
@@ -7119,6 +7433,7 @@ const AppBuilder = () => {
                     </div>
                 );
             case 'PDF_VIEWER':
+            case 'DOCUMENT':
                 return (
                     <div style={{ width: '100%', height: '100%', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <div style={{ padding: '8px 12px', backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -7136,6 +7451,15 @@ const AppBuilder = () => {
                                     <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No PDF Source Provided</div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                );
+            case 'CAD_VIEWER':
+                return (
+                    <div style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #1f2937', backgroundColor: comp.props.backgroundColor || '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                        <div style={{ width: '55%', height: '55%', border: '2px solid rgba(148,163,184,0.7)', transform: 'rotate(12deg)', borderRadius: '6px' }} />
+                        <div style={{ position: 'absolute', bottom: '8px', left: '8px', right: '8px', fontSize: '0.68rem', color: '#cbd5e1', textAlign: 'center' }}>
+                            {(comp.props.source || comp.props.fileUrl) ? 'CAD model loaded' : 'No CAD source set'}
                         </div>
                     </div>
                 );
@@ -7554,6 +7878,7 @@ const AppBuilder = () => {
                 );
 
             case 'EMBED_WEB':
+            case 'WEBPAGE':
                 return (
                     <div style={{ width: '100%', height: '100%', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                         {viewMode === 'DESIGN' ? (
@@ -7602,6 +7927,23 @@ const AppBuilder = () => {
                                     <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No URL configured</div>
                                 </div>
                             )
+                        )}
+                    </div>
+                );
+            case 'VIDEO':
+                return (
+                    <div style={{ width: '100%', height: '100%', backgroundColor: '#000000', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                        {(comp.props.videoUrl || comp.props.url) ? (
+                            <video
+                                src={comp.props.videoUrl || comp.props.url}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                controls={comp.props.controls !== false}
+                                autoPlay={!!comp.props.autoplay}
+                                loop={!!comp.props.loop}
+                                muted={!!comp.props.muted}
+                            />
+                        ) : (
+                            <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>No video URL configured</div>
                         )}
                     </div>
                 );
@@ -11084,7 +11426,7 @@ const AppBuilder = () => {
                                                     </div>
                                                 )}
 
-                                                {selectedComp.type === 'PDF' && (
+                                                {['PDF', 'DOCUMENT', 'PDF_VIEWER'].includes(selectedComp.type) && (
                                                     <div className="prop-group">
                                                         <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>DOCUMENT TITLE</label>
                                                         <input value={selectedComp.props.title || ''} onChange={(e) => updateComponentProps(selectedComp.id, { title: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px', marginBottom: '12px' }} />
@@ -16750,7 +17092,13 @@ const AppBuilder = () => {
                                 <button
                                     onClick={() => {
                                         if (window.confirm("Run this trigger now for testing?")) {
-                                            executeTrigger(triggerEditor.trigger);
+                                            const trig = triggerEditor.trigger || {};
+                                            const defaultStop = getDefaultStopOnError(trig.event);
+                                            enqueueTriggerEvent({
+                                                eventId: trig.event || 'TEST',
+                                                triggers: [{ ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : defaultStop }],
+                                                stopOnErrorDefault: defaultStop
+                                            });
                                         }
                                     }}
                                     style={{ padding: '10px 20px', backgroundColor: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -16769,6 +17117,9 @@ const AppBuilder = () => {
                                         delete finalized.conditions;
                                         delete finalized.actions;
                                         delete finalized.conditionMatch;
+                                        if (typeof finalized.stopOnError !== 'boolean') {
+                                            finalized.stopOnError = getDefaultStopOnError(finalized.event);
+                                        }
 
                                         if (sourceType === 'WIDGET') {
                                             const comp = currentStepId === 'BASE' ? baseComponents.find(c => c.id === sourceId) : currentStep.components.find(c => c.id === sourceId);
@@ -18280,5 +18631,3 @@ const AppBuilder = () => {
 };
 
 export default AppBuilder;
-
-
