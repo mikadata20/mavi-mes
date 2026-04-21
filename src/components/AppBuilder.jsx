@@ -729,7 +729,20 @@ const COMPONENT_TYPES = {
     // Advanced & Specialized (Mavi-MES custom)
     VISION_DETECTOR: { id: 'VISION_DETECTOR', label: 'Vision AI OCR', icon: Eye, defaultProps: { label: 'Scanner', triggers: [], visibilityCondition: null, rotation: 0 } },
     IOT_DEVICE: { id: 'IOT_DEVICE', label: 'IoT Connector', icon: Cpu, defaultProps: { topic: '', triggers: [], visibilityCondition: null, rotation: 0 } },
-    INTERACTIVE_TABLE: { id: 'INTERACTIVE_TABLE', label: 'Data Table', icon: Table, defaultProps: { tableId: '', triggers: [], visibilityCondition: null, rotation: 0 } },
+    INTERACTIVE_TABLE: {
+        id: 'INTERACTIVE_TABLE',
+        label: 'Data Table',
+        icon: Table,
+        defaultProps: {
+            tableId: '',
+            dataSourceMode: 'TABLE', // TABLE | TABLE_QUERY | VARIABLE
+            dataSourceVar: '',
+            linkedRecordPlaceholderId: '',
+            triggers: [],
+            visibilityCondition: null,
+            rotation: 0
+        }
+    },
     ANALYTIC: {
         id: 'ANALYTIC',
         label: 'Analytic',
@@ -900,6 +913,47 @@ const COMPONENT_TYPES = {
             rotation: 0
         }
     },
+    SIGNATURE: {
+        id: 'SIGNATURE',
+        label: 'Electronic Signature',
+        icon: ShieldCheck,
+        defaultSize: { w: 340, h: 180 },
+        defaultProps: {
+            signatureMode: 'AUTH', // AUTH | DRAW
+            required: false,
+            signeeType: 'ANY_OPERATOR', // ANY_OPERATOR | APP_EXECUTOR | NOT_APP_EXECUTOR | ALLOWED_USERS
+            allowedUsersCsv: '',
+            signatureMeaning: 'I confirm this data is accurate.',
+            commentMandatory: false,
+            dataToSignMode: 'VARIABLES', // VARIABLES | RECORD_PLACEHOLDER | BOTH
+            dataToSignPlaceholderId: '',
+            lockStepOnSign: true,
+            visible: true,
+            enabled: true,
+            triggers: [],
+            visibilityCondition: null,
+            rotation: 0
+        }
+    },
+    CUSTOM_WIDGET: {
+        id: 'CUSTOM_WIDGET',
+        label: 'Custom Widget',
+        icon: Code,
+        defaultSize: { w: 320, h: 220 },
+        defaultProps: {
+            title: 'Custom Widget',
+            htmlTemplate: '<div style="padding:12px;font-family:Arial,sans-serif;">Custom Widget</div>',
+            cssTemplate: '',
+            jsTemplate: '',
+            inputVar: '',
+            outputVar: '',
+            visible: true,
+            enabled: true,
+            triggers: [],
+            visibilityCondition: null,
+            rotation: 0
+        }
+    },
     MULTI_SELECT: {
         id: 'MULTI_SELECT',
         label: 'MultiSelect Dropdown',
@@ -984,7 +1038,7 @@ const CATEGORIZED_COMPONENTS = {
         label: 'User Interface',
         icon: MousePointer2,
         color: '#3b82f6',
-        types: ['BUTTON', 'CHECKBOX', 'DATE_PICKER', 'IMAGE', 'TEXT', 'LIST_PICKER', 'LIST_VIEW', 'NOTIFIER', 'PASSWORD_TEXT', 'SLIDER', 'DROPDOWN', 'BOOLEAN_TOGGLE', 'TEXT_INPUT', 'DATETIME_PICKER', 'EMBED_WEB', 'FILE_PICKER', 'IMAGE_PICKER', 'SIGNATURE_PAD', 'MULTI_SELECT']
+        types: ['BUTTON', 'CHECKBOX', 'DATE_PICKER', 'IMAGE', 'TEXT', 'LIST_PICKER', 'LIST_VIEW', 'NOTIFIER', 'PASSWORD_TEXT', 'SLIDER', 'DROPDOWN', 'BOOLEAN_TOGGLE', 'TEXT_INPUT', 'DATETIME_PICKER', 'EMBED_WEB', 'FILE_PICKER', 'IMAGE_PICKER', 'SIGNATURE_PAD', 'SIGNATURE', 'MULTI_SELECT', 'CUSTOM_WIDGET']
     },
     TABLES: {
         label: 'Tables & Records',
@@ -1069,7 +1123,7 @@ const CATEGORIZED_COMPONENTS = {
 
 const CHROMELESS_COMPONENT_TYPES = [
     'TIMER', 'DATABASE_CONNECTOR', 'API_CONNECTOR', 'IOT_CONNECTOR', 'LOGIC_NODE', 'EVENT_TRIGGER',
-    'CLOCK', 'TINY_DB', 'CLOUD_DB', 'NOTIFIER', 'SOUND', 'SOUND_RECORDER', 'SPEECH_RECOGNIZER',
+    'CLOCK', 'TINY_DB', 'CLOUD_DB', 'NOTIFIER', 'SOUND', 'SOUND_RECORDER',
     'TEXT_TO_SPEECH', 'ACCELEROMETER', 'LOCATION_SENSOR', 'FILE', 'DATA_FILE', 'SPREADSHEET', 'TINY_WEB_DB', 'WEB_API', 'BLUETOOTH_LE',
     'BARCODE_SCANNER', 'BARCODE_SCANNER_NON_VISIBLE', 'CAMERA', 'CAMCORDER', 'PLAYER', 'BAROMETER',
     'GYROSCOPE_SENSOR', 'HYGROMETER', 'LIGHT_SENSOR', 'MAGNETIC_FIELD_SENSOR', 'NEAR_FIELD',
@@ -1086,7 +1140,11 @@ const DEVICE_TRIGGER_COMPONENT_TYPES = [
 const FORM_BINDABLE_COMPONENT_TYPES = [
     'TEXT_INPUT', 'TEXT_AREA', 'DROPDOWN', 'RADIO_GROUP', 'MULTI_SELECT', 'NUMBER_INPUT', 'DATE_PICKER',
     'DATETIME_PICKER', 'BOOLEAN_TOGGLE', 'BARCODE', 'CAMERA_SCANNER', 'VISION_DETECTOR', 'MENU',
-    'SLIDER', 'CHECKBOX', 'LIST_PICKER', 'LIST_VIEW', 'PASSWORD_TEXT'
+    'SLIDER', 'CHECKBOX', 'LIST_PICKER', 'LIST_VIEW', 'PASSWORD_TEXT', 'SPEECH_RECOGNIZER'
+];
+const INPUT_WIDGET_TYPES_WITH_DATASOURCE = [
+    'TEXT_INPUT', 'TEXT_AREA', 'NUMBER_INPUT', 'DATE_PICKER', 'DATETIME_PICKER', 'BOOLEAN_TOGGLE',
+    'DROPDOWN', 'MULTI_SELECT', 'CHECKBOX', 'PASSWORD_TEXT', 'LIST_PICKER', 'LIST_VIEW', 'SPEECH_RECOGNIZER'
 ];
 const FORM_STEP_TYPES = ['Form Step', 'Signature Form'];
 
@@ -1260,6 +1318,15 @@ const AppBuilder = () => {
     const [uploadValues, setUploadValues] = useState({});
     const [drawValues, setDrawValues] = useState({});
     const [signatureValues, setSignatureValues] = useState({});
+    const [signatureAuditTrail, setSignatureAuditTrail] = useState([]);
+    const [signedStepLocks, setSignedStepLocks] = useState({});
+    const [eSignModal, setESignModal] = useState({
+        isOpen: false,
+        compId: null,
+        username: '',
+        password: '',
+        comment: ''
+    });
     const [canvasDrawings, setCanvasDrawings] = useState({}); // Stores { canvasId: [{type:'line',...}] }
     const [recordingState, setRecordingState] = useState({});
     const [mediaRecorderValues, setMediaRecorderValues] = useState({});
@@ -1676,6 +1743,19 @@ const AppBuilder = () => {
         const canvas = signatureCanvasRefs.current[key];
         if (!canvas) return;
         const dataUrl = canvas.toDataURL('image/png');
+        const allComponents = currentStepId === 'BASE' ? baseComponents : (currentStep?.components || []);
+        const comp = allComponents.find(c => c.id === key);
+        if (comp?.type === 'SIGNATURE') {
+            const payload = {
+                type: 'DRAW',
+                signedBy: appContext.user || 'OPERATOR01',
+                signedAt: new Date().toISOString(),
+                meaning: comp.props?.signatureMeaning || '',
+                signatureImage: dataUrl
+            };
+            commitSignaturePayload(comp, payload);
+            return;
+        }
         setSignatureValues(prev => ({ ...prev, [key]: dataUrl }));
     };
 
@@ -1685,6 +1765,143 @@ const AppBuilder = () => {
         const { canvas, ctx } = refs;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         setSignatureValues(prev => ({ ...prev, [key]: '' }));
+    };
+
+    const getStepById = (stepId) => steps.find(s => s.id === stepId);
+
+    const getStepComponentsById = (stepId) => getStepById(stepId)?.components || [];
+
+    const appendSignatureAudit = (entry = {}) => {
+        setSignatureAuditTrail(prev => ([
+            ...prev,
+            {
+                id: `sig_audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                timestamp: new Date().toISOString(),
+                executionId: appExecutionId,
+                stepId: currentStepId,
+                station: appContext.station,
+                actor: appContext.user,
+                ...entry
+            }
+        ]));
+    };
+
+    const commitSignaturePayload = (comp, payload) => {
+        if (!comp?.id) return;
+        setSignatureValues(prev => ({ ...prev, [comp.id]: payload }));
+
+        appendSignatureAudit({
+            event: 'SIGN',
+            compId: comp.id,
+            mode: comp.props?.signatureMode || 'AUTH',
+            meaning: comp.props?.signatureMeaning || '',
+            signedBy: payload?.signedBy || appContext.user,
+            signedAt: payload?.signedAt || new Date().toISOString()
+        });
+
+        if (comp.props?.lockStepOnSign !== false) {
+            setSignedStepLocks(prev => ({
+                ...prev,
+                [currentStepId]: {
+                    locked: true,
+                    signedAt: payload?.signedAt || new Date().toISOString(),
+                    signedBy: payload?.signedBy || appContext.user,
+                    compId: comp.id
+                }
+            }));
+        }
+
+        onWidgetInteraction(comp, 'AfterSignature', payload);
+        onWidgetInteraction(comp, 'ON_CHANGE', payload);
+    };
+
+    const validateRequiredSignaturesOnStep = (stepId = currentStepId) => {
+        const comps = getStepComponentsById(stepId);
+        const missing = comps.filter(c => c.type === 'SIGNATURE' && c.props?.required && !signatureValues[c.id]);
+        if (missing.length > 0) {
+            const names = missing.map(c => c.displayName || c.name || c.props?.label || c.id).join(', ');
+            alert(`Signature required before proceeding: ${names}`);
+            return false;
+        }
+        return true;
+    };
+
+    const isStepLockedBySignature = (stepId = currentStepId) => Boolean(signedStepLocks?.[stepId]?.locked);
+
+    const canCurrentUserSign = (comp) => {
+        const signeeType = comp?.props?.signeeType || 'ANY_OPERATOR';
+        const currentUser = String(appContext.user || '').trim();
+        const executorUser = String(appExecutorUser || '').trim();
+        if (signeeType === 'ANY_OPERATOR') return true;
+        if (signeeType === 'APP_EXECUTOR') return currentUser && currentUser === executorUser;
+        if (signeeType === 'NOT_APP_EXECUTOR') return currentUser && currentUser !== executorUser;
+        if (signeeType === 'ALLOWED_USERS') {
+            const allowed = String(comp?.props?.allowedUsersCsv || '')
+                .split(',')
+                .map(v => v.trim())
+                .filter(Boolean);
+            return allowed.length === 0 ? false : allowed.includes(currentUser);
+        }
+        return true;
+    };
+
+    const openElectronicSignatureModal = (comp) => {
+        if (!canCurrentUserSign(comp)) {
+            alert('Current user is not allowed to sign this widget.');
+            return;
+        }
+        setESignModal({
+            isOpen: true,
+            compId: comp.id,
+            username: appContext.user || '',
+            password: '',
+            comment: ''
+        });
+    };
+
+    const confirmElectronicSignature = () => {
+        if (!eSignModal.compId) return;
+        const allComponents = currentStepId === 'BASE'
+            ? baseComponents
+            : (currentStep?.components || []);
+        const comp = allComponents.find(c => c.id === eSignModal.compId);
+        if (!comp) return;
+
+        const username = String(eSignModal.username || '').trim();
+        const password = String(eSignModal.password || '').trim();
+        if (!username || !password) {
+            alert('Username and password are required.');
+            return;
+        }
+        if (comp.props.commentMandatory && !String(eSignModal.comment || '').trim()) {
+            alert('Comment is mandatory for this signature.');
+            return;
+        }
+
+        let signedData = {};
+        const mode = comp.props.dataToSignMode || 'VARIABLES';
+        if (mode === 'VARIABLES' || mode === 'BOTH') {
+            signedData.variables = appVariables.reduce((acc, v) => ({ ...acc, [v.name]: v.value }), {});
+        }
+        if (mode === 'RECORD_PLACEHOLDER' || mode === 'BOTH') {
+            const placeholderId = comp.props.dataToSignPlaceholderId || '';
+            if (placeholderId) {
+                signedData.recordPlaceholder = recordPlaceholderData[placeholderId] || null;
+            } else {
+                signedData.recordPlaceholder = null;
+            }
+        }
+
+        const payload = {
+            type: 'ELECTRONIC',
+            signedBy: username,
+            signedAt: new Date().toISOString(),
+            meaning: comp.props.signatureMeaning || '',
+            comment: eSignModal.comment || '',
+            data: signedData
+        };
+        commitSignaturePayload(comp, payload);
+        setESignModal({ isOpen: false, compId: null, username: '', password: '', comment: '' });
     };
 
     const startMediaRecording = async (comp) => {
@@ -2555,6 +2772,7 @@ const AppBuilder = () => {
     // --- Completion Records Tracking State ---
     const [appExecutionId, setAppExecutionId] = useState(null);
     const [appStartTime, setAppStartTime] = useState(null);
+    const [appExecutorUser, setAppExecutorUser] = useState('OPERATOR01');
     const [stepTimeLogs, setStepTimeLogs] = useState([]); // { stepId, duration }
     const [lastStepStartTime, setLastStepStartTime] = useState(null);
     const [completions, setCompletions] = useState([]);
@@ -2981,6 +3199,8 @@ const AppBuilder = () => {
         return `${widgetId}:${queryHash}`;
     };
 
+    const buildInteractiveQueryCacheKey = (widgetId, tableId, queryId) => `itq:${widgetId}:${tableId || ''}:${queryId || ''}`;
+
     const resolveDataBinding = (comp) => {
         const binding = normalizeDataBinding(comp?.props || {});
         if (!binding.enabled || !binding.tableId) {
@@ -3007,11 +3227,19 @@ const AppBuilder = () => {
             const b = normalizeDataBinding(c.props);
             return b.enabled && Boolean(b.tableId);
         });
+        const interactiveQueryComponents = allComponents.filter((c) => {
+            if (!c?.props || c.type !== 'INTERACTIVE_TABLE') return false;
+            const mode = c.props.dataSourceMode || 'TABLE';
+            return mode === 'TABLE_QUERY' && Boolean(c.props.tableId) && Boolean(c.props.queryId);
+        });
 
         const legacyTableIds = Array.from(new Set(
             allComponents
-                .filter(c => c?.props?.dataSourceType === 'TABLE_RECORD' && c?.props?.bindingConfig?.tableId)
-                .map(c => c.props.bindingConfig.tableId)
+                .filter(c =>
+                    (c?.props?.dataSourceType === 'TABLE_RECORD' && c?.props?.bindingConfig?.tableId) ||
+                    (c?.type === 'INTERACTIVE_TABLE' && c?.props?.tableId)
+                )
+                .map(c => c?.props?.bindingConfig?.tableId || c?.props?.tableId)
         ));
 
         const loadBindings = async () => {
@@ -3083,10 +3311,43 @@ const AppBuilder = () => {
             }
         };
 
+        const loadInteractiveQueries = async () => {
+            for (const comp of interactiveQueryComponents) {
+                const tableId = comp.props.tableId;
+                const table = tables.find(t => t.id === tableId);
+                const queryDef = table?.queries?.find(q => q.id === comp.props.queryId);
+                if (!tableId || !queryDef) continue;
+
+                const key = buildInteractiveQueryCacheKey(comp.id, tableId, comp.props.queryId);
+                setBindingCache(prev => ({
+                    ...prev,
+                    [key]: {
+                        loading: true,
+                        error: null,
+                        rows: prev[key]?.rows || []
+                    }
+                }));
+
+                try {
+                    const rows = await queryTableRecords(tableId, queryDef);
+                    setBindingCache(prev => ({
+                        ...prev,
+                        [key]: { loading: false, error: null, rows: rows || [] }
+                    }));
+                } catch (error) {
+                    setBindingCache(prev => ({
+                        ...prev,
+                        [key]: { loading: false, error: error?.message || 'Failed to load query data', rows: [] }
+                    }));
+                }
+            }
+        };
+
         loadBindings();
         loadLegacyBindings();
+        loadInteractiveQueries();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [steps, baseComponents, viewMode]);
+    }, [steps, baseComponents, viewMode, tables]);
 
     const resolveValue = (val, type = 'STATIC', compProps = null) => {
         // If we have compProps, use the new data source logic
@@ -3114,7 +3375,8 @@ const AppBuilder = () => {
                 if (String(compProps.varSource || '').startsWith('APP_INFO.')) {
                     return resolveValue(`@${compProps.varSource}`, 'STATIC');
                 }
-                return resolveValue(compProps.varSource, 'STATIC');
+                const v = appVariables.find(av => av.name === compProps.varSource);
+                return v ? v.value : '';
             }
         }
 
@@ -3284,6 +3546,32 @@ const AppBuilder = () => {
         return true;
     };
 
+    const resolveComponentDatasourceValue = (comp, fallbackValue = '') => {
+        const props = comp?.props || {};
+        if (!props.dataSourceType) return fallbackValue;
+
+        if (props.dataSourceType === 'VARIABLE') {
+            const varName = String(props.varSource || '');
+            if (!varName) return fallbackValue;
+            if (varName.startsWith('APP_INFO.')) {
+                return resolveValue(`@${varName}`, 'STATIC');
+            }
+            const v = appVariables.find(av => av.name === varName);
+            return v ? v.value : fallbackValue;
+        }
+
+        const resolved = resolveValue('', 'STATIC', props);
+        return resolved === undefined || resolved === null || resolved === '' ? fallbackValue : resolved;
+    };
+
+    const syncInputDatasourceValue = (comp, nextValue, source = 'widget_input') => {
+        const props = comp?.props || {};
+        if (props.dataSourceType !== 'VARIABLE') return;
+        const varName = String(props.varSource || '');
+        if (!varName || varName.startsWith('APP_INFO.')) return;
+        setValidatedVariableValue(varName, nextValue, source);
+    };
+
     const executeAction = async (action, runtimeCtx = null) => {
         if (!action) return true;
         try {
@@ -3451,6 +3739,7 @@ const AppBuilder = () => {
                         station: appContext.station,
                         status: isCancel ? 'CANCELED' : 'COMPLETED',
                         variables: appVariables.reduce((acc, v) => ({ ...acc, [v.name]: v.value }), {}),
+                        signatures: signatureValues,
                         stepDurations: finalStepTimeLogs,
                         recordPlaceholders: Object.entries(recordPlaceholderData).reduce((acc, [id, data]) => {
                             const rp = recordPlaceholders.find(p => p.id === id);
@@ -3476,6 +3765,7 @@ const AppBuilder = () => {
                         setRecordPlaceholderData({});
                         setAppExecutionId(`exec_${Date.now()}`);
                         setAppStartTime(new Date().toISOString());
+                        setAppExecutorUser(appContext.user || 'OPERATOR01');
                         setLastStepStartTime(Date.now());
                         setStepTimeLogs([]);
                         if (runtimeCtx) runtimeCtx.transitionExecuted = true;
@@ -3836,7 +4126,13 @@ const AppBuilder = () => {
                 if (comp?.type === 'SPEECH_RECOGNIZER') {
                     if (methodId === 'GetText') {
                         onWidgetInteraction(comp, 'BeforeGettingText');
-                        setTimeout(() => onWidgetInteraction(comp, 'AfterGettingText', { result: 'Simulated Speech', partial: false }), 1000);
+                        setTimeout(() => {
+                            const simulated = 'Simulated Speech';
+                            setPreviewFormValues(prev => ({ ...prev, [compId]: simulated }));
+                            syncInputDatasourceValue(comp, simulated, 'SPEECH_RECOGNIZER_CHANGED');
+                            onWidgetInteraction(comp, 'AfterGettingText', { result: simulated, partial: false });
+                            onWidgetInteraction(comp, 'ON_CHANGE', { result: simulated, partial: false });
+                        }, 1000);
                         return;
                     }
                     if (methodId === 'Stop') return;
@@ -4553,6 +4849,7 @@ const AppBuilder = () => {
             // Completion tracking init
             setAppExecutionId(`exec_${Date.now()}`);
             setAppStartTime(new Date().toISOString());
+            setAppExecutorUser(appContext.user || 'OPERATOR01');
             setLastStepStartTime(Date.now());
             setStepTimeLogs([]);
             triggerQueueRef.current = [];
@@ -4560,6 +4857,7 @@ const AppBuilder = () => {
             // Cleanup on exit
             setAppExecutionId(null);
             setAppStartTime(null);
+            setAppExecutorUser(appContext.user || 'OPERATOR01');
             setLastStepStartTime(null);
             triggerQueueRef.current = [];
         }
@@ -5961,7 +6259,25 @@ const AppBuilder = () => {
         setSteps(newSteps);
     };
 
+    const isComponentDatasourceMapped = (comp) => {
+        const props = comp?.props || {};
+        const rawType = props.dataSourceType || 'VARIABLE';
+        const isLegacySystemInfo = rawType === 'VARIABLE' && String(props.varSource || '').startsWith('APP_INFO.');
+        const normalizedType = isLegacySystemInfo ? 'SYSTEM_INFO' : rawType;
+        if (normalizedType === 'VARIABLE') return Boolean(String(props.varSource || '').trim());
+        if (normalizedType === 'SYSTEM_INFO') return String(props.varSource || '').startsWith('APP_INFO.');
+        if (normalizedType === 'IOT') return Boolean(props.iotTopicId);
+        if (normalizedType === 'TABLE_RECORD') {
+            const cfg = props.bindingConfig || {};
+            return Boolean(cfg.tableId && cfg.lookupColumn && cfg.lookupValue !== '' && cfg.resultColumn);
+        }
+        return false;
+    };
+
+    const shouldShowDatasourceWarning = (comp) => INPUT_WIDGET_TYPES_WITH_DATASOURCE.includes(comp?.type) && !isComponentDatasourceMapped(comp);
+
     const renderDataSourceSection = (selectedComp) => {
+        const showUnmappedWarning = shouldShowDatasourceWarning(selectedComp);
         const rawType = selectedComp.props.dataSourceType || 'VARIABLE';
         const isLegacySystemInfo = rawType === 'VARIABLE' && String(selectedComp.props.varSource || '').startsWith('APP_INFO.');
         const normalizedType = isLegacySystemInfo ? 'SYSTEM_INFO' : rawType;
@@ -5971,6 +6287,12 @@ const AppBuilder = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                     <Database size={14} color="#3b82f6" />
                     <label style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Data Source</label>
+                    {showUnmappedWarning && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', color: '#b45309', fontWeight: 700 }}>
+                            <AlertTriangle size={12} color="#f59e0b" />
+                            Unmapped
+                        </span>
+                    )}
                 </div>
 
                 <div className="prop-group">
@@ -6184,6 +6506,28 @@ const AppBuilder = () => {
                     transition: dragState ? 'none' : 'all 0.1s'
                 }}
             >
+                {shouldShowDatasourceWarning(comp) && viewMode === 'DESIGN' && (
+                    <div
+                        title="Datasource belum dipilih"
+                        style={{
+                            position: 'absolute',
+                            top: '4px',
+                            right: '4px',
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            backgroundColor: '#fffbeb',
+                            border: '1px solid #fcd34d',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 2100,
+                            pointerEvents: 'none'
+                        }}
+                    >
+                        <AlertTriangle size={11} color="#d97706" />
+                    </div>
+                )}
                 {isSelected && viewMode === 'DESIGN' && (
                     <>
                         <button
@@ -6371,7 +6715,7 @@ const AppBuilder = () => {
             case 'CHECKBOX':
                 const isCbEnabled = comp.props.enabled !== false;
                 const isCbVisible = comp.props.visible !== false;
-                const isChecked = previewFormValues[comp.id] ?? comp.props.checked ?? comp.props.defaultValue ?? false;
+                const isChecked = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.checked ?? comp.props.defaultValue ?? false);
 
                 if (!isCbVisible && viewMode === 'PREVIEW') return null;
 
@@ -6401,6 +6745,7 @@ const AppBuilder = () => {
                                 onChange={(e) => {
                                     if (viewMode !== 'PREVIEW') return;
                                     setPreviewFormValues(prev => ({ ...prev, [comp.id]: e.target.checked }));
+                                    syncInputDatasourceValue(comp, e.target.checked, 'CHECKBOX_CHANGED');
                                     onWidgetInteraction(comp, 'Changed');
                                     onWidgetInteraction(comp, 'ON_CHANGE'); // legacy
                                 }}
@@ -6453,10 +6798,12 @@ const AppBuilder = () => {
                     if (viewMode === 'PREVIEW') {
                         updateComponentProps(comp.id, newProps);
                         setPreviewFormValues(prev => ({ ...prev, [comp.id]: val }));
+                        syncInputDatasourceValue(comp, val, 'DATE_PICKER_CHANGED');
                         onWidgetInteraction(comp, 'AfterDateSet');
                         onWidgetInteraction(comp, 'ON_CHANGE'); // legacy
                     }
                 };
+                const dateDisplayValue = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, '');
 
                 return (
                     <div
@@ -6504,7 +6851,7 @@ const AppBuilder = () => {
                         />
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
                             <Calendar size={16} />
-                            <span>{comp.props.text || comp.props.label || 'Select Date'}</span>
+                            <span>{dateDisplayValue || comp.props.text || comp.props.label || 'Select Date'}</span>
                         </div>
                     </div>
                 );
@@ -6669,6 +7016,7 @@ const AppBuilder = () => {
                     if (viewMode === 'PREVIEW') {
                         updateComponentProps(comp.id, newProps);
                         setPreviewFormValues(prev => ({ ...prev, [comp.id]: val }));
+                        syncInputDatasourceValue(comp, val, 'DATETIME_PICKER_CHANGED');
                         onWidgetInteraction(comp, 'AfterTimeSet');
                         onWidgetInteraction(comp, 'ON_CHANGE');
                     }
@@ -6684,6 +7032,7 @@ const AppBuilder = () => {
                 const alignMap = ['left', 'center', 'right'];
                 const textAlign = alignMap[comp.props.textAlignment] || 'center';
                 const fontStack = comp.props.fontTypeface === 'SERIF' ? 'serif' : comp.props.fontTypeface === 'MONOSPACE' ? 'monospace' : 'inherit';
+                const timeDisplayValue = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, '');
 
                 return (
                     <div
@@ -6732,7 +7081,7 @@ const AppBuilder = () => {
                         />
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
                             <Clock size={16} />
-                            <span>{comp.props.text || comp.props.label || 'Select Time'}</span>
+                            <span>{timeDisplayValue || comp.props.text || comp.props.label || 'Select Time'}</span>
                         </div>
                     </div>
                 );
@@ -6945,7 +7294,7 @@ const AppBuilder = () => {
             case 'SLIDER': {
                 const sMin = comp.props.minValue ?? comp.props.min ?? 0;
                 const sMax = comp.props.maxValue ?? comp.props.max ?? 100;
-                const sVal = previewFormValues[comp.id] ?? comp.props.thumbPosition ?? comp.props.defaultValue ?? 30;
+                const sVal = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.thumbPosition ?? comp.props.defaultValue ?? 30);
                 const sSteps = comp.props.numberOfSteps || 100;
                 const sStep = (sMax - sMin) / sSteps;
                 const sVisible = comp.props.visible !== false;
@@ -6973,6 +7322,7 @@ const AppBuilder = () => {
                                 if (viewMode !== 'PREVIEW') return;
                                 const newVal = Number(e.target.value);
                                 setPreviewFormValues(prev => ({ ...prev, [comp.id]: newVal }));
+                                syncInputDatasourceValue(comp, newVal, 'SLIDER_CHANGED');
                                 onWidgetInteraction(comp, 'PositionChanged', { thumbPosition: newVal });
                                 onWidgetInteraction(comp, 'ON_CHANGE'); // Legacy
                             }}
@@ -7007,7 +7357,7 @@ const AppBuilder = () => {
             case 'DROPDOWN': {
                 const spElements = comp.props.elements || (comp.props.elementsFromString ? comp.props.elementsFromString.split(',').map(s => s.trim()) : ['Item 1', 'Item 2']);
                 const spSelectionIndex = previewFormValues[`${comp.id}_index`] ?? comp.props.selectionIndex ?? 0;
-                const spSelection = previewFormValues[comp.id] ?? comp.props.selection ?? (spSelectionIndex > 0 ? spElements[spSelectionIndex - 1] : '');
+                const spSelection = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.selection ?? (spSelectionIndex > 0 ? spElements[spSelectionIndex - 1] : ''));
                 const spVisible = comp.props.visible !== false;
                 const spEnabled = comp.props.enabled !== false;
 
@@ -7054,6 +7404,7 @@ const AppBuilder = () => {
                                     [comp.id]: selectedVal,
                                     [`${comp.id}_index`]: newIndex
                                 }));
+                                syncInputDatasourceValue(comp, selectedVal, 'DROPDOWN_CHANGED');
                                 onWidgetInteraction(comp, 'AfterSelecting', { selection: selectedVal });
                                 onWidgetInteraction(comp, 'ON_CHANGE'); // Legacy
                             }}
@@ -7068,7 +7419,7 @@ const AppBuilder = () => {
                 );
             }
             case 'BOOLEAN_TOGGLE': {
-                const swOn = previewToggleState[comp.id] ?? comp.props.on ?? comp.props.defaultValue ?? false;
+                const swOn = previewToggleState[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.on ?? comp.props.defaultValue ?? false);
                 const swEnabled = comp.props.enabled !== false;
                 const swVisible = comp.props.visible !== false;
 
@@ -7108,6 +7459,8 @@ const AppBuilder = () => {
                             if (viewMode !== 'PREVIEW' || !swEnabled) return;
                             const newState = !swOn;
                             setPreviewToggleState(prev => ({ ...prev, [comp.id]: newState }));
+                            setPreviewFormValues(prev => ({ ...prev, [comp.id]: newState }));
+                            syncInputDatasourceValue(comp, newState, 'BOOLEAN_TOGGLE_CHANGED');
                             onWidgetInteraction(comp, 'Changed', { on: newState });
                             onWidgetInteraction(comp, 'CLICK'); // Legacy
                         }}
@@ -7131,11 +7484,14 @@ const AppBuilder = () => {
             }
             case 'PASSWORD_TEXT':
             case 'TEXT_INPUT':
+            case 'NUMBER_INPUT':
             case 'EMAIL_PICKER':
             case 'TEXT_AREA': {
                 const isPass = comp.type === 'PASSWORD_TEXT';
                 const isMulti = comp.props.multiLine || comp.type === 'TEXT_AREA';
-                const inputVal = previewFormValues[comp.id] ?? comp.props.text ?? comp.props.defaultValue ?? '';
+                const isNumberInput = comp.type === 'NUMBER_INPUT' || comp.props.numbersOnly;
+                const isEnterTriggeredInput = comp.type === 'TEXT_INPUT' || comp.type === 'NUMBER_INPUT';
+                const inputVal = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.text ?? comp.props.defaultValue ?? '');
                 const pVisible = comp.props.visible !== false;
                 const pEnabled = comp.props.enabled !== false;
 
@@ -7148,14 +7504,14 @@ const AppBuilder = () => {
 
                 return (
                     <div style={{ width: '100%', height: '100%', opacity: pEnabled ? 1 : 0.6 }}>
-                        {(comp.props.label || comp.props.text) && comp.type === 'TEXT_INPUT' && (
+                        {(comp.props.label || comp.props.text) && (comp.type === 'TEXT_INPUT' || comp.type === 'NUMBER_INPUT') && (
                             <div style={{ marginBottom: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>
                                 {comp.props.label || 'TextBox'}
                             </div>
                         )}
                         <InputElement
                             id={`input-${comp.id}`}
-                            type={isPass ? (comp.props.passwordVisible ? 'text' : 'password') : (comp.props.numbersOnly ? 'number' : 'text')}
+                            type={isPass ? (comp.props.passwordVisible ? 'text' : 'password') : (isNumberInput ? 'number' : 'text')}
                             value={inputVal}
                             placeholder={comp.props.hint || comp.props.placeholder}
                             disabled={!pEnabled && viewMode === 'PREVIEW'}
@@ -7166,10 +7522,20 @@ const AppBuilder = () => {
                             onChange={(e) => {
                                 if (viewMode !== 'PREVIEW') return;
                                 let val = e.target.value;
-                                if (comp.props.numbersOnly && val && isNaN(val) && val !== '-' && val !== '.') return;
+                                if (isNumberInput && val && isNaN(val) && val !== '-' && val !== '.') return;
                                 setPreviewFormValues(prev => ({ ...prev, [comp.id]: val }));
-                                onWidgetInteraction(comp, 'TextChanged', { text: val });
-                                onWidgetInteraction(comp, 'ON_CHANGE'); // Legacy
+                                syncInputDatasourceValue(comp, val, `${comp.type}_CHANGED`);
+                                if (!isEnterTriggeredInput) {
+                                    onWidgetInteraction(comp, 'TextChanged', { text: val });
+                                    onWidgetInteraction(comp, 'ON_CHANGE'); // Legacy
+                                }
+                            }}
+                            onKeyDown={(e) => {
+                                if (viewMode !== 'PREVIEW' || !isEnterTriggeredInput || e.key !== 'Enter') return;
+                                const latestValue = e.currentTarget.value;
+                                syncInputDatasourceValue(comp, latestValue, `${comp.type}_ENTER`);
+                                onWidgetInteraction(comp, 'TextChanged', { text: latestValue });
+                                onWidgetInteraction(comp, 'ON_CHANGE'); // Tulip-like: fire on Enter for text/number inputs
                             }}
                             style={{
                                 width: '100%',
@@ -7204,7 +7570,7 @@ const AppBuilder = () => {
             }
             case 'MULTI_SELECT':
                 const multiOptions = comp.props.options || ['Option 1', 'Option 2', 'Option 3'];
-                const selectedOptions = previewFormValues[comp.id] || [];
+                const selectedOptions = previewFormValues[comp.id] || resolveComponentDatasourceValue(comp, []);
                 return (
                     <div style={{ width: '100%' }}>
                         {comp.props.label && <div style={{ marginBottom: '8px', fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{comp.props.label}</div>}
@@ -7218,6 +7584,7 @@ const AppBuilder = () => {
                                             if (viewMode !== 'PREVIEW') return;
                                             const next = active ? selectedOptions.filter(o => o !== opt) : [...selectedOptions, opt];
                                             setPreviewFormValues(prev => ({ ...prev, [comp.id]: next }));
+                                            syncInputDatasourceValue(comp, next, 'MULTI_SELECT_CHANGED');
                                             onWidgetInteraction(comp, 'ON_CHANGE');
                                         }}
                                         style={{
@@ -7320,30 +7687,158 @@ const AppBuilder = () => {
                         <div style={{ padding: '8px', borderTop: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.72rem' }}>{comp.props.placeholder || 'Ask anything...'}</div>
                     </div>
                 );
-            case 'INTERACTIVE_TABLE':
-            case 'ADVANCED_TABLE':
+            case 'SPEECH_RECOGNIZER': {
+                const spokenText = previewFormValues[comp.id] ?? resolveComponentDatasourceValue(comp, comp.props.result || '');
+                const lang = comp.props.language || 'en-US';
+                const isEnabled = comp.props.enabled !== false;
+
+                const startSpeechInput = () => {
+                    if (viewMode !== 'PREVIEW' || !isEnabled) return;
+                    onWidgetInteraction(comp, 'BeforeGettingText');
+
+                    const SpeechRecognition = (typeof window !== 'undefined')
+                        ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+                        : null;
+
+                    if (!SpeechRecognition) {
+                        const typed = window.prompt('Speech input simulation: type transcript', '');
+                        if (typed === null) return;
+                        setPreviewFormValues(prev => ({ ...prev, [comp.id]: typed }));
+                        syncInputDatasourceValue(comp, typed, 'SPEECH_RECOGNIZER_CHANGED');
+                        onWidgetInteraction(comp, 'AfterGettingText', { result: typed, partial: false, language: lang });
+                        onWidgetInteraction(comp, 'ON_CHANGE', { result: typed, partial: false, language: lang });
+                        return;
+                    }
+
+                    const recognition = new SpeechRecognition();
+                    recognition.lang = lang;
+                    recognition.interimResults = false;
+                    recognition.maxAlternatives = 1;
+                    recognition.onresult = (event) => {
+                        const transcript = event?.results?.[0]?.[0]?.transcript || '';
+                        setPreviewFormValues(prev => ({ ...prev, [comp.id]: transcript }));
+                        syncInputDatasourceValue(comp, transcript, 'SPEECH_RECOGNIZER_CHANGED');
+                        onWidgetInteraction(comp, 'AfterGettingText', { result: transcript, partial: false, language: lang });
+                        onWidgetInteraction(comp, 'ON_CHANGE', { result: transcript, partial: false, language: lang });
+                    };
+                    recognition.onerror = () => {
+                        onWidgetInteraction(comp, 'AfterGettingText', { result: spokenText || '', partial: false, error: true, language: lang });
+                    };
+                    recognition.start();
+                };
+
                 return (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: '5px', backgroundColor: comp.props.backgroundColor || '#ffffff', border: comp.props.bordered !== false ? '1px solid #cbd5e1' : 'none', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', padding: '5px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Table size={14} color={comp.props.color || '#3b82f6'} />
-                            {comp.props.title || (comp.type === 'ADVANCED_TABLE' ? 'Advanced Table' : 'Interactive Table')}
-                        </div>
-                        <div style={{ flex: 1, backgroundColor: '#f8fafc', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
-                                {(comp.props.columns?.length > 0 ? comp.props.columns : ['Column 1', 'Column 2', 'Column 3']).map((col, idx) => (
-                                    <div key={idx} style={{ flex: 1, padding: '8px', fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>{col}</div>
-                                ))}
-                            </div>
-                            {Array.from({ length: 3 }).map((_, rIdx) => (
-                                <div key={rIdx} style={{ display: 'flex', borderBottom: '1px solid #f1f5f9' }}>
-                                    {(comp.props.columns?.length > 0 ? comp.props.columns : ['...', '...', '...']).map((_, cIdx) => (
-                                        <div key={cIdx} style={{ flex: 1, padding: '8px', fontSize: '0.7rem', color: '#94a3b8' }}>Row {rIdx + 1}</div>
-                                    ))}
-                                </div>
-                            ))}
+                    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <button
+                            onClick={startSpeechInput}
+                            disabled={!isEnabled || viewMode !== 'PREVIEW'}
+                            style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: (isEnabled && viewMode === 'PREVIEW') ? '#eff6ff' : '#f8fafc',
+                                color: '#1e3a8a',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                cursor: (isEnabled && viewMode === 'PREVIEW') ? 'pointer' : 'not-allowed'
+                            }}
+                        >
+                            Start Speech Input
+                        </button>
+                        <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px', fontSize: '0.78rem', color: spokenText ? '#0f172a' : '#94a3b8', backgroundColor: '#ffffff', overflow: 'auto' }}>
+                            {spokenText || 'Transcribed text will appear here'}
                         </div>
                     </div>
                 );
+            }
+            case 'INTERACTIVE_TABLE':
+            case 'ADVANCED_TABLE':
+                {
+                    const dsMode = comp.props.dataSourceMode || 'TABLE';
+                    const tableId = comp.props.tableId || '';
+                    const cache = tableId ? tableDataCache[tableId] : null;
+                    const queryCacheKey = buildInteractiveQueryCacheKey(comp.id, tableId, comp.props.queryId);
+                    const queryCache = bindingCache[queryCacheKey] || null;
+                    const variableRows = (() => {
+                        if (dsMode !== 'VARIABLE') return [];
+                        const selectedVar = appVariables.find(v => v.name === comp.props.dataSourceVar);
+                        return Array.isArray(selectedVar?.value) ? selectedVar.value : [];
+                    })();
+                    const allRows = dsMode === 'VARIABLE'
+                        ? variableRows
+                        : (dsMode === 'TABLE_QUERY'
+                            ? (Array.isArray(queryCache?.rows) ? queryCache.rows : [])
+                            : (Array.isArray(cache?.rows) ? cache.rows : []));
+                    const rows = allRows.slice(0, Math.max(1, Number(comp.props.pageSize || 5)));
+                    const loading = dsMode === 'VARIABLE' ? false : (dsMode === 'TABLE_QUERY' ? Boolean(queryCache?.loading) : Boolean(cache?.loading));
+                    const linkedPlaceholderId = comp.props.linkedRecordPlaceholderId || '';
+                    const isSelectable = Boolean(linkedPlaceholderId);
+                    const selectedRowId = previewFormValues[`${comp.id}__selectedRowId`];
+                    const resolvedColumns = (comp.props.columns?.length > 0
+                        ? comp.props.columns
+                        : (rows[0] ? Object.keys(rows[0]).filter(k => !k.startsWith('_')).slice(0, 6) : ['Column 1', 'Column 2', 'Column 3']));
+
+                    const handleRowSelect = (row) => {
+                        if (viewMode !== 'PREVIEW' || !isSelectable) return;
+                        const rowId = row?.id ?? row?._id ?? JSON.stringify(row);
+                        setPreviewFormValues(prev => ({ ...prev, [`${comp.id}__selectedRowId`]: rowId }));
+                        setRecordPlaceholderData(prev => ({ ...prev, [linkedPlaceholderId]: row }));
+                        onWidgetInteraction(comp, 'RowSelected', { row, rowId, linkedPlaceholderId });
+                        onWidgetInteraction(comp, 'ON_CHANGE', { row, rowId, linkedPlaceholderId });
+                    };
+
+                    return (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: '5px', backgroundColor: comp.props.backgroundColor || '#ffffff', border: comp.props.bordered !== false ? '1px solid #cbd5e1' : 'none', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', padding: '5px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <Table size={14} color={comp.props.color || '#3b82f6'} />
+                                    {comp.props.title || (comp.type === 'ADVANCED_TABLE' ? 'Advanced Table' : 'Interactive Table')}
+                                </span>
+                                {!isSelectable && (
+                                    <span style={{ fontSize: '0.62rem', color: '#b45309', fontWeight: 700 }}>Set Linked Record to enable row selection</span>
+                                )}
+                            </div>
+                            <div style={{ flex: 1, backgroundColor: '#f8fafc', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
+                                    {resolvedColumns.map((col, idx) => (
+                                        <div key={idx} style={{ flex: 1, padding: '8px', fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>{col}</div>
+                                    ))}
+                                </div>
+                                <div style={{ flex: 1, overflowY: 'auto' }}>
+                                    {loading && (
+                                        <div style={{ padding: '10px', fontSize: '0.72rem', color: '#64748b' }}>Loading rows...</div>
+                                    )}
+                                    {!loading && rows.length === 0 && (
+                                        <div style={{ padding: '10px', fontSize: '0.72rem', color: '#94a3b8' }}>No rows found</div>
+                                    )}
+                                    {!loading && rows.map((row, rIdx) => {
+                                        const rowId = row?.id ?? row?._id ?? JSON.stringify(row);
+                                        const isSelected = selectedRowId !== undefined && String(selectedRowId) === String(rowId);
+                                        return (
+                                            <div
+                                                key={`${rowId}_${rIdx}`}
+                                                onClick={() => handleRowSelect(row)}
+                                                style={{
+                                                    display: 'flex',
+                                                    borderBottom: '1px solid #f1f5f9',
+                                                    cursor: isSelectable && viewMode === 'PREVIEW' ? 'pointer' : 'default',
+                                                    backgroundColor: isSelected ? '#dbeafe' : 'transparent'
+                                                }}
+                                            >
+                                                {resolvedColumns.map((col, cIdx) => (
+                                                    <div key={cIdx} style={{ flex: 1, padding: '8px', fontSize: '0.72rem', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {row?.[col] !== undefined && row?.[col] !== null ? String(row[col]) : ''}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
             case 'RECORD_HISTORY':
                 return (
                     <div style={{ width: '100%', height: '100%', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -7784,6 +8279,104 @@ const AppBuilder = () => {
                         )}
                     </div>
                 );
+
+            case 'SIGNATURE': {
+                const signedPayload = signatureValues[comp.id];
+                const isSigned = Boolean(signedPayload);
+                const canSign = canCurrentUserSign(comp);
+                const isDrawMode = (comp.props.signatureMode || 'AUTH') === 'DRAW';
+
+                if (isDrawMode) {
+                    const key = comp.id;
+                    return (
+                        <div style={{
+                            width: '100%', height: '100%',
+                            backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                        }}>
+                            <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                                {comp.props.signatureMeaning || 'Electronic Signature'}
+                            </div>
+                            <canvas
+                                ref={(el) => { signatureCanvasRefs.current[key] = el; }}
+                                width={Math.max(280, Number(comp.w || 320))}
+                                height={Math.max(90, Number((comp.h || 180) - 70))}
+                                style={{ flex: 1, backgroundColor: '#ffffff', cursor: viewMode === 'PREVIEW' ? 'crosshair' : 'default' }}
+                                onMouseDown={(e) => viewMode === 'PREVIEW' && startSignatureDraw(key, e)}
+                                onMouseMove={(e) => viewMode === 'PREVIEW' && moveSignatureDraw(key, e)}
+                                onMouseUp={() => viewMode === 'PREVIEW' && endSignatureDraw(key)}
+                                onMouseLeave={() => viewMode === 'PREVIEW' && endSignatureDraw(key)}
+                                onTouchStart={(e) => viewMode === 'PREVIEW' && startSignatureDraw(key, e)}
+                                onTouchMove={(e) => viewMode === 'PREVIEW' && moveSignatureDraw(key, e)}
+                                onTouchEnd={() => viewMode === 'PREVIEW' && endSignatureDraw(key)}
+                            />
+                            <div style={{ padding: '8px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+                                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{isSigned ? 'Signed' : 'Not signed'}</span>
+                                <button
+                                    onClick={() => viewMode === 'PREVIEW' && clearSignatureCanvas(key)}
+                                    style={{ padding: '4px 10px', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', background: 'white', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div style={{
+                        width: '100%', height: '100%',
+                        backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px',
+                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '10px'
+                    }}>
+                        <div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#1e293b' }}>{comp.props.signatureMeaning || 'Electronic Signature'}</div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '4px' }}>
+                                {isSigned ? `Signed by ${signedPayload.signedBy} at ${new Date(signedPayload.signedAt).toLocaleString()}` : 'Awaiting signature'}
+                            </div>
+                        </div>
+                        <button
+                            disabled={viewMode !== 'PREVIEW' || !canSign}
+                            onClick={() => openElectronicSignatureModal(comp)}
+                            style={{
+                                marginTop: '8px',
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: canSign ? '#eff6ff' : '#f8fafc',
+                                color: canSign ? '#1e3a8a' : '#94a3b8',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: (viewMode === 'PREVIEW' && canSign) ? 'pointer' : 'not-allowed'
+                            }}
+                        >
+                            {isSigned ? 'Re-sign' : 'Sign Electronically'}
+                        </button>
+                    </div>
+                );
+            }
+
+            case 'CUSTOM_WIDGET': {
+                const sourceValue = comp.props.inputVar
+                    ? (appVariables.find(v => v.name === comp.props.inputVar)?.value ?? '')
+                    : '';
+                return (
+                    <div style={{ width: '100%', height: '100%', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '6px 10px', borderBottom: '1px solid #e2e8f0', fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                            {comp.props.title || 'Custom Widget'}
+                        </div>
+                        <div style={{ flex: 1, padding: '8px', fontSize: '0.72rem', color: '#334155', overflow: 'auto' }}>
+                            <div dangerouslySetInnerHTML={{ __html: comp.props.htmlTemplate || '' }} />
+                            {sourceValue !== '' && (
+                                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', color: '#64748b' }}>
+                                    Input: {String(sourceValue)}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
 
             case 'SIGNATURE_PAD':
                 return (
@@ -9612,6 +10205,28 @@ const AppBuilder = () => {
                                                     pointerEvents: viewMode === 'PREVIEW' ? 'auto' : (isLocked ? 'none' : 'auto')
                                                 }}
                                             >
+                                                {shouldShowDatasourceWarning(comp) && viewMode === 'DESIGN' && (
+                                                    <div
+                                                        title="Datasource belum dipilih"
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '4px',
+                                                            right: '4px',
+                                                            width: '18px',
+                                                            height: '18px',
+                                                            borderRadius: '50%',
+                                                            backgroundColor: '#fffbeb',
+                                                            border: '1px solid #fcd34d',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            zIndex: 12,
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                    >
+                                                        <AlertTriangle size={11} color="#d97706" />
+                                                    </div>
+                                                )}
                                                 {isSelected && viewMode === 'DESIGN' && (
                                                     <>
                                                         <button
@@ -9726,6 +10341,28 @@ const AppBuilder = () => {
                                                     transition: dragState ? 'none' : 'all 0.1s'
                                                 }}
                                             >
+                                                {shouldShowDatasourceWarning(comp) && viewMode === 'DESIGN' && (
+                                                    <div
+                                                        title="Datasource belum dipilih"
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '4px',
+                                                            right: '4px',
+                                                            width: '18px',
+                                                            height: '18px',
+                                                            borderRadius: '50%',
+                                                            backgroundColor: '#fffbeb',
+                                                            border: '1px solid #fcd34d',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            zIndex: 12,
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                    >
+                                                        <AlertTriangle size={11} color="#d97706" />
+                                                    </div>
+                                                )}
                                                 {isSelected && viewMode === 'DESIGN' && (
                                                     <>
                                                         <button
@@ -12274,9 +12911,12 @@ const AppBuilder = () => {
 
                                                 {selectedComp.type === 'VARIABLE_TEXT' && renderDataSourceSection(selectedComp)}
 
+                                                {INPUT_WIDGET_TYPES_WITH_DATASOURCE.includes(selectedComp.type) && (
+                                                    renderDataSourceSection(selectedComp)
+                                                )}
+
                                                 {selectedComp.type === 'NUMBER_INPUT' && (
                                                     <>
-                                                        {renderDataSourceSection(selectedComp)}
                                                         <div className="prop-group">
                                                             <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>LABEL</label>
                                                             <input value={selectedComp.props.label} onChange={(e) => updateComponentProps(selectedComp.id, { label: e.target.value })} style={{ width: '100%', padding: '10px', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '4px', color: '#0f172a' }} />
@@ -12441,6 +13081,77 @@ const AppBuilder = () => {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             <input id={`required-sig-${selectedComp.id}`} type="checkbox" checked={!!selectedComp.props.required} onChange={(e) => updateComponentProps(selectedComp.id, { required: e.target.checked })} />
                                                             <label htmlFor={`required-sig-${selectedComp.id}`} style={{ fontSize: '0.75rem', color: '#475569' }}>Required to complete step</label>
+                                                        </div>
+                                                        <div className="prop-group" style={{ marginTop: '10px' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>SIGNEE</label>
+                                                            <select value={selectedComp.props.signeeType || 'ANY_OPERATOR'} onChange={(e) => updateComponentProps(selectedComp.id, { signeeType: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                                                                <option value="ANY_OPERATOR">Any Operator</option>
+                                                                <option value="APP_EXECUTOR">App Executor</option>
+                                                                <option value="NOT_APP_EXECUTOR">Any but App Executor</option>
+                                                                <option value="ALLOWED_USERS">Allowed Users List</option>
+                                                            </select>
+                                                        </div>
+                                                        {selectedComp.props.signeeType === 'ALLOWED_USERS' && (
+                                                            <div className="prop-group">
+                                                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>ALLOWED USERS (csv)</label>
+                                                                <input value={selectedComp.props.allowedUsersCsv || ''} onChange={(e) => updateComponentProps(selectedComp.id, { allowedUsersCsv: e.target.value })} placeholder="user1,user2" style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }} />
+                                                            </div>
+                                                        )}
+                                                        <div className="prop-group">
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>SIGNATURE MEANING</label>
+                                                            <textarea value={selectedComp.props.signatureMeaning || ''} onChange={(e) => updateComponentProps(selectedComp.id, { signatureMeaning: e.target.value })} rows={2} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }} />
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <input id={`comment-mandatory-${selectedComp.id}`} type="checkbox" checked={!!selectedComp.props.commentMandatory} onChange={(e) => updateComponentProps(selectedComp.id, { commentMandatory: e.target.checked })} />
+                                                            <label htmlFor={`comment-mandatory-${selectedComp.id}`} style={{ fontSize: '0.75rem', color: '#475569' }}>Comment Mandatory</label>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <input id={`lock-step-sign-${selectedComp.id}`} type="checkbox" checked={selectedComp.props.lockStepOnSign !== false} onChange={(e) => updateComponentProps(selectedComp.id, { lockStepOnSign: e.target.checked })} />
+                                                            <label htmlFor={`lock-step-sign-${selectedComp.id}`} style={{ fontSize: '0.75rem', color: '#475569' }}>Lock Step After Signature</label>
+                                                        </div>
+                                                        <div className="prop-group" style={{ marginTop: '10px' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>DATA TO SIGN</label>
+                                                            <select value={selectedComp.props.dataToSignMode || 'VARIABLES'} onChange={(e) => updateComponentProps(selectedComp.id, { dataToSignMode: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                                                                <option value="VARIABLES">Variables</option>
+                                                                <option value="RECORD_PLACEHOLDER">Record Placeholder</option>
+                                                                <option value="BOTH">Variables + Record Placeholder</option>
+                                                            </select>
+                                                        </div>
+                                                        {(selectedComp.props.dataToSignMode === 'RECORD_PLACEHOLDER' || selectedComp.props.dataToSignMode === 'BOTH') && (
+                                                            <div className="prop-group">
+                                                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>RECORD PLACEHOLDER</label>
+                                                                <select value={selectedComp.props.dataToSignPlaceholderId || ''} onChange={(e) => updateComponentProps(selectedComp.id, { dataToSignPlaceholderId: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                                                                    <option value="">Select placeholder...</option>
+                                                                    {recordPlaceholders.map(rp => <option key={rp.id} value={rp.id}>{rp.name}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+
+                                                {selectedComp.type === 'CUSTOM_WIDGET' && (
+                                                    <>
+                                                        <div className="prop-group">
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>WIDGET TITLE</label>
+                                                            <input value={selectedComp.props.title || ''} onChange={(e) => updateComponentProps(selectedComp.id, { title: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }} />
+                                                        </div>
+                                                        <div className="prop-group">
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>INPUT VAR</label>
+                                                            <select value={selectedComp.props.inputVar || ''} onChange={(e) => updateComponentProps(selectedComp.id, { inputVar: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                                                                <option value="">None</option>
+                                                                {appVariables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div className="prop-group">
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>OUTPUT VAR</label>
+                                                            <select value={selectedComp.props.outputVar || ''} onChange={(e) => updateComponentProps(selectedComp.id, { outputVar: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                                                                <option value="">None</option>
+                                                                {appVariables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div className="prop-group">
+                                                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>HTML TEMPLATE</label>
+                                                            <textarea value={selectedComp.props.htmlTemplate || ''} onChange={(e) => updateComponentProps(selectedComp.id, { htmlTemplate: e.target.value })} rows={6} style={{ width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.72rem' }} />
                                                         </div>
                                                     </>
                                                 )}
@@ -13087,6 +13798,33 @@ const AppBuilder = () => {
                                                             <Database size={12} /> DATA SOURCE & SETTINGS
                                                         </div>
                                                         <div className="prop-group" style={{ marginBottom: '10px' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>DATASOURCE TYPE</label>
+                                                            <select
+                                                                value={selectedComp.props.dataSourceMode || 'TABLE'}
+                                                                onChange={(e) => updateComponentProps(selectedComp.id, { dataSourceMode: e.target.value })}
+                                                                style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                            >
+                                                                <option value="TABLE">Table</option>
+                                                                <option value="TABLE_QUERY">Table Query</option>
+                                                                <option value="VARIABLE">Variable (array of objects)</option>
+                                                            </select>
+                                                        </div>
+                                                        {(selectedComp.props.dataSourceMode || 'TABLE') === 'VARIABLE' ? (
+                                                            <div className="prop-group" style={{ marginBottom: '10px' }}>
+                                                                <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>VARIABLE</label>
+                                                                <select
+                                                                    value={selectedComp.props.dataSourceVar || ''}
+                                                                    onChange={(e) => updateComponentProps(selectedComp.id, { dataSourceVar: e.target.value })}
+                                                                    style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                                >
+                                                                    <option value="">Select variable...</option>
+                                                                    {appVariables.map(v => (
+                                                                        <option key={v.name} value={v.name}>{v.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                        <div className="prop-group" style={{ marginBottom: '10px' }}>
                                                             <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>TABLE</label>
                                                             <select
                                                                 value={selectedComp.props.tableId || ''}
@@ -13099,8 +13837,23 @@ const AppBuilder = () => {
                                                                 ))}
                                                             </select>
                                                         </div>
+                                                        )}
 
-                                                        {selectedComp.props.tableId && (
+                                                        <div className="prop-group" style={{ marginBottom: '10px' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>LINKED RECORD PLACEHOLDER</label>
+                                                            <select
+                                                                value={selectedComp.props.linkedRecordPlaceholderId || ''}
+                                                                onChange={(e) => updateComponentProps(selectedComp.id, { linkedRecordPlaceholderId: e.target.value })}
+                                                                style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                            >
+                                                                <option value="">None (rows not selectable)</option>
+                                                                {recordPlaceholders
+                                                                    .filter(rp => (selectedComp.props.dataSourceMode || 'TABLE') === 'VARIABLE' ? true : (!selectedComp.props.tableId || rp.tableId === selectedComp.props.tableId))
+                                                                    .map(rp => <option key={rp.id} value={rp.id}>{rp.name}</option>)}
+                                                            </select>
+                                                        </div>
+
+                                                        {selectedComp.props.tableId && (selectedComp.props.dataSourceMode || 'TABLE') !== 'VARIABLE' && (
                                                             <>
                                                                 <div className="prop-group" style={{ marginBottom: '10px' }}>
                                                                     <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>SELECT SAVED QUERY</label>
@@ -13115,24 +13868,10 @@ const AppBuilder = () => {
                                                                         ))}
                                                                     </select>
                                                                 </div>
-
-                                                                <div className="prop-group" style={{ marginBottom: '10px' }}>
-                                                                    <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>SELECT AGGREGATION</label>
-                                                                    <select
-                                                                        value={selectedComp.props.aggregationId || ''}
-                                                                        onChange={(e) => updateComponentProps(selectedComp.id, { aggregationId: e.target.value, queryId: '' })}
-                                                                        style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem' }}
-                                                                    >
-                                                                        <option value="">None</option>
-                                                                        {tables.find(t => t.id === selectedComp.props.tableId)?.aggregations?.map(a => (
-                                                                            <option key={a.id} value={a.id}>{a.name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
                                                             </>
                                                         )}
 
-                                                        {selectedComp.props.tableId && (
+                                                        {selectedComp.props.tableId && (selectedComp.props.dataSourceMode || 'TABLE') !== 'VARIABLE' && (
                                                             <div className="prop-group" style={{ marginBottom: '10px' }}>
                                                                 <label style={{ display: 'block', fontSize: '0.65rem', color: '#64748b', marginBottom: '4px' }}>COLUMNS TO DISPLAY</label>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '8px', borderRadius: '4px' }}>
@@ -17838,6 +18577,35 @@ const AppBuilder = () => {
                                 </button>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {eSignModal.isOpen && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 10010, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '460px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 20px 35px rgba(2,6,23,0.2)' }}>
+                        <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <ShieldCheck size={18} color="#1d4ed8" />
+                            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>Electronic Signature</div>
+                        </div>
+                        <div style={{ padding: '16px', display: 'grid', gap: '10px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#475569', fontWeight: 700, marginBottom: '4px' }}>USERNAME</label>
+                                <input value={eSignModal.username} onChange={(e) => setESignModal(prev => ({ ...prev, username: e.target.value }))} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#475569', fontWeight: 700, marginBottom: '4px' }}>PASSWORD</label>
+                                <input type="password" value={eSignModal.password} onChange={(e) => setESignModal(prev => ({ ...prev, password: e.target.value }))} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#475569', fontWeight: 700, marginBottom: '4px' }}>COMMENT</label>
+                                <textarea value={eSignModal.comment} onChange={(e) => setESignModal(prev => ({ ...prev, comment: e.target.value }))} rows={3} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '8px', justifyContent: 'flex-end', backgroundColor: '#f8fafc' }}>
+                            <button onClick={() => setESignModal({ isOpen: false, compId: null, username: '', password: '', comment: '' })} style={{ padding: '8px 12px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', borderRadius: '6px', fontWeight: 700, color: '#475569', cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={confirmElectronicSignature} style={{ padding: '8px 12px', border: 'none', backgroundColor: '#2563eb', borderRadius: '6px', fontWeight: 800, color: '#ffffff', cursor: 'pointer' }}>Sign</button>
+                        </div>
                     </div>
                 </div>
             )}
