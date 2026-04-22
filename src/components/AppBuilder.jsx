@@ -3526,13 +3526,17 @@ const AppBuilder = () => {
 
     const setValidatedVariableValue = (varPath, nextValue, source = 'trigger') => {
         let blockedReason = null;
+        let didChange = false;
+        let prevValue = undefined;
         setAppVariables(prev => prev.map(v => {
             if (v.name !== varPath) return v;
+            prevValue = v.value;
             const check = validateVariableValue(v, nextValue);
             if (!check.ok) {
                 blockedReason = check.reason;
                 return v;
             }
+            didChange = v.value !== nextValue;
             return { ...v, value: nextValue };
         }));
 
@@ -3542,6 +3546,35 @@ const AppBuilder = () => {
                 alert(`Validation blocked: ${blockedReason}`);
             }
             return false;
+        }
+
+        // Tulip-like: allow "data changed" triggers
+        if (viewMode === 'PREVIEW' && didChange) {
+            const eventPayload = { variable: varPath, previousValue: prevValue, value: nextValue, source };
+
+            const step = steps.find(s => s.id === currentStepId);
+            const stepTriggers = (step?.triggers || [])
+                .filter(t => t && t.enabled !== false && t.event === 'ON_VARIABLE_CHANGE')
+                .filter(t => !t.watchVar || String(t.watchVar) === String(varPath));
+
+            const appLevel = (appTriggers || [])
+                .filter(t => t && t.enabled !== false && t.event === 'ON_VARIABLE_CHANGE')
+                .filter(t => !t.watchVar || String(t.watchVar) === String(varPath));
+
+            if (stepTriggers.length > 0) {
+                enqueueTriggerEvent({
+                    eventId: 'ON_VARIABLE_CHANGE',
+                    triggers: stepTriggers.map(t => ({ ...t, stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : false })),
+                    stopOnErrorDefault: false
+                });
+            }
+            if (appLevel.length > 0) {
+                enqueueTriggerEvent({
+                    eventId: 'ON_VARIABLE_CHANGE',
+                    triggers: appLevel.map(t => ({ ...t, stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : false })),
+                    stopOnErrorDefault: false
+                });
+            }
         }
         return true;
     };
@@ -3598,7 +3631,7 @@ const AppBuilder = () => {
                 case 'SHOW_MESSAGE': {
                     const { value, valueType } = action.payload;
                     const resolved = resolveValue(value, valueType);
-                    if (viewMode === 'PREVIEW') {
+                    if (viewMode === 'PREVIEW' || runtimeCtx?.isTest) {
                         alert(resolved);
                     } else {
                         console.log(`[Show Message] ${resolved}`);
@@ -3724,6 +3757,7 @@ const AppBuilder = () => {
                 case 'SAVE_ALL_APP_DATA': {
                     const isCancel = action.type === 'CANCEL_APP';
                     const isSaveOnly = action.type === 'SAVE_ALL_APP_DATA';
+                    const transitionEventId = isSaveOnly ? null : (isCancel ? 'ON_APP_CANCEL' : 'ON_APP_COMPLETE');
 
                     const now = new Date();
                     const totalDuration = Math.round((now.getTime() - new Date(appStartTime).getTime()) / 1000);
@@ -3757,6 +3791,21 @@ const AppBuilder = () => {
                             if (!isSaveOnly) alert(isCancel ? 'App Canceled' : 'App Completed Successfully');
                             else console.log('App Data Saved');
                         }).catch(err => console.error('Failed to log completion:', err));
+                    }
+
+                    // Tulip-like behavior: completion/cancel triggers fire as their own event.
+                    if (!isSaveOnly && transitionEventId) {
+                        const completionTriggers = (appTriggers || [])
+                            .filter(t => t && t.enabled !== false && t.event === transitionEventId)
+                            .map(t => ({ ...t, stopOnError: typeof t.stopOnError === 'boolean' ? t.stopOnError : true }));
+                        if (runtimeCtx && completionTriggers.length > 0) {
+                            if (!Array.isArray(runtimeCtx.followUpEvents)) runtimeCtx.followUpEvents = [];
+                            runtimeCtx.followUpEvents.push({
+                                eventId: transitionEventId,
+                                triggers: completionTriggers,
+                                stopOnErrorDefault: true
+                            });
+                        }
                     }
 
                     if (!isSaveOnly) {
@@ -3942,7 +3991,8 @@ const AppBuilder = () => {
 
                 const runtimeCtx = {
                     stopRemainingOnError: !!evt.stopOnErrorDefault,
-                    transitionExecuted: false
+                    transitionExecuted: false,
+                    followUpEvents: []
                 };
 
                 for (const trig of evt.triggers) {
@@ -3957,7 +4007,10 @@ const AppBuilder = () => {
 
                 // Tulip-like behavior: once a transition executes, clear pending queue.
                 if (runtimeCtx.transitionExecuted) {
-                    triggerQueueRef.current = [];
+                    // Cancel anything already queued, but allow transition-caused events (e.g. ON_APP_COMPLETE).
+                    triggerQueueRef.current = Array.isArray(runtimeCtx.followUpEvents) && runtimeCtx.followUpEvents.length > 0
+                        ? [...runtimeCtx.followUpEvents]
+                        : [];
                 }
             }
         } finally {
@@ -5559,7 +5612,8 @@ const AppBuilder = () => {
             enabled: true,
             clauses: [{ conditions: [], actions: [] }],
             elseActions: [],
-            ...(event === 'TIMER' ? { timerInterval: 60 } : {})
+            ...(event === 'TIMER' ? { timerInterval: 60 } : {}),
+            ...(event === 'ON_VARIABLE_CHANGE' ? { watchVar: '' } : {})
         };
         setTriggerEditor({ isOpen: true, sourceType: 'STEP', sourceId: currentStepId, trigger: newTrig });
     };
@@ -15981,6 +16035,7 @@ const AppBuilder = () => {
                                                 <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                                     {[
                                                         { label: 'On Screen Enter', event: 'ON_STEP_ENTER' },
+                                                        { label: 'Data Changes', event: 'ON_VARIABLE_CHANGE' },
                                                         { label: 'Timers', event: 'TIMER' },
                                                         { label: 'Machines & Devices', event: 'ON_DEVICE_INPUT' },
                                                         { label: 'On Screen Exit', event: 'ON_STEP_EXIT' }
@@ -16348,7 +16403,8 @@ const AppBuilder = () => {
                                                 <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                                     {[
                                                         { label: 'On App Start', event: 'ON_APP_START' },
-                                                        { label: 'On App Close', event: 'ON_APP_CLOSE' }
+                                                        { label: 'On App Complete', event: 'ON_APP_COMPLETE' },
+                                                        { label: 'On App Cancel', event: 'ON_APP_CANCEL' }
                                                     ].map(group => {
                                                         const groupTriggers = (appTriggers || []).filter(t => t.event === group.event);
                                                         return (
@@ -17459,16 +17515,42 @@ const AppBuilder = () => {
                                             {/* When Section */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid #e2e8f0' }}>
                                                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000' }}>When</span>
-                                                {['APP', 'STEP'].includes(triggerEditor.sourceType) ? (
+                                                {['APP', 'STEP', 'WIDGET'].includes(triggerEditor.sourceType) ? (
                                                     <select
                                                         value={triggerEditor.trigger.event || ''}
                                                         onChange={(e) => setTriggerEditor({ ...triggerEditor, trigger: { ...triggerEditor.trigger, event: e.target.value } })}
                                                         style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                                                     >
+                                                        {triggerEditor.sourceType === 'WIDGET' && (() => {
+                                                            const compId = triggerEditor.sourceId;
+                                                            let comp = null;
+                                                            if (compId) {
+                                                                comp = baseComponents.find(c => c.id === compId);
+                                                                if (!comp) {
+                                                                    const step = steps.find(s => s.id === currentStepId);
+                                                                    comp = step?.components?.find(c => c.id === compId) || null;
+                                                                }
+                                                            }
+                                                            const type = String(comp?.type || '');
+                                                            const events = ['ON_CLICK', 'ON_CHANGE', 'ON_SUBMIT'];
+                                                            const supportsSubmit = ['FORM', 'FORM_SUBMIT', 'DATA_ENTRY_FORM'].includes(type);
+                                                            const filtered = supportsSubmit ? events : events.filter(e => e !== 'ON_SUBMIT');
+
+                                                            return (
+                                                                <>
+                                                                    {filtered.map(ev => (
+                                                                        <option key={ev} value={ev}>
+                                                                            {ev === 'ON_CLICK' ? 'button is pressed' : ev === 'ON_CHANGE' ? 'data changes' : 'form is submitted'}
+                                                                        </option>
+                                                                    ))}
+                                                                </>
+                                                            );
+                                                        })()}
                                                         {triggerEditor.sourceType === 'STEP' && (
                                                             <>
                                                                 <option value="ON_STEP_ENTER">Screen is opened</option>
                                                                 <option value="ON_STEP_EXIT">Screen is closed</option>
+                                                                <option value="ON_VARIABLE_CHANGE">data changes</option>
                                                                 <option value="ON_DEVICE_INPUT">device</option>
                                                                 <option value="TIMER">timer</option>
                                                             </>
@@ -17476,6 +17558,9 @@ const AppBuilder = () => {
                                                         {triggerEditor.sourceType === 'APP' && (
                                                             <>
                                                                 <option value="ON_APP_START">App is started</option>
+                                                                <option value="ON_APP_COMPLETE">App is completed</option>
+                                                                <option value="ON_APP_CANCEL">App is canceled</option>
+                                                                <option value="ON_VARIABLE_CHANGE">data changes</option>
                                                                 <option value="TIMER">timer</option>
                                                             </>
                                                         )}
@@ -17519,6 +17604,59 @@ const AppBuilder = () => {
                                                         <span style={{ fontSize: '0.85rem' }}>seconds</span>
                                                     </>
                                                 )}
+                                            </div>
+
+                                            {triggerEditor.trigger.event === 'ON_VARIABLE_CHANGE' && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>Variable</span>
+                                                    <select
+                                                        value={triggerEditor.trigger.watchVar || ''}
+                                                        onChange={(e) => setTriggerEditor({ ...triggerEditor, trigger: { ...triggerEditor.trigger, watchVar: e.target.value } })}
+                                                        style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', minWidth: '260px' }}
+                                                    >
+                                                        <option value="">Any variable</option>
+                                                        {appVariables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            {/* Error handling / Stop remaining triggers on error */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: '12px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>Stop remaining triggers on error</div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                                        If an action errors, cancel subsequent triggers in this event.
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    onClick={() => setTriggerEditor({
+                                                        ...triggerEditor,
+                                                        trigger: { ...triggerEditor.trigger, stopOnError: !(triggerEditor.trigger.stopOnError === true) }
+                                                    })}
+                                                    style={{
+                                                        width: '44px',
+                                                        height: '24px',
+                                                        backgroundColor: (triggerEditor.trigger.stopOnError === true) ? '#0ea5e9' : '#cbd5e1',
+                                                        borderRadius: '999px',
+                                                        position: 'relative',
+                                                        cursor: 'pointer',
+                                                        border: '1px solid #e2e8f0',
+                                                        flex: '0 0 auto'
+                                                    }}
+                                                    title="Stop remaining triggers on error"
+                                                >
+                                                    <div style={{
+                                                        width: '18px',
+                                                        height: '18px',
+                                                        backgroundColor: 'white',
+                                                        borderRadius: '999px',
+                                                        position: 'absolute',
+                                                        top: '2px',
+                                                        left: (triggerEditor.trigger.stopOnError === true) ? '22px' : '2px',
+                                                        transition: 'all 0.2s',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.12)'
+                                                    }} />
+                                                </div>
                                             </div>
 
                                             {/* Clauses (If / Else If) */}
@@ -17654,11 +17792,6 @@ const AppBuilder = () => {
                                                                                         <option value="SHOW_IMAGE">Media: Show Image</option>
                                                                                         <option value="PLAY_VIDEO">Media: Play Video</option>
                                                                                     </optgroup>
-                                                                                    <optgroup label="Media & Audio">
-                                                                                        <option value="PLAY_SOUND">Media: Play Sound</option>
-                                                                                        <option value="SHOW_IMAGE">Media: Show Image</option>
-                                                                                        <option value="PLAY_VIDEO">Media: Play Video</option>
-                                                                                    </optgroup>
                                                                                     <optgroup label="Table Records">
                                                                                         <option value="TABLE_RECORD_LOAD">Table Record: Load</option>
                                                                                         <option value="TABLE_RECORD_CREATE">Table Record: Create</option>
@@ -17672,11 +17805,20 @@ const AppBuilder = () => {
                                                                                         <option value="CALCULATE_FORMULA">Advanced: Calculate Formula</option>
                                                                                     </optgroup>
                                                                                     <optgroup label="App & Navigation">
-                                                                                        <option value="NEXT_STEP">App: Go to Next Screen</option>
-                                                                                        <option value="PREV_STEP">App: Go to Previous Screen</option>
-                                                                                        <option value="GO_TO_STEP">App: Go to Specific Screen</option>
-                                                                                        <option value="COMPLETE_APP">App: Complete App</option>
-                                                                                        <option value="CANCEL_APP">App: Cancel App</option>
+                                                                                        {(() => {
+                                                                                            const isTransitionActionType = (t) => ['GO_TO_STEP', 'NEXT_STEP', 'PREV_STEP', 'COMPLETE_APP', 'CANCEL_APP'].includes(String(t || ''));
+                                                                                            const actionsList = triggerEditor.trigger?.clauses?.[cIdx]?.actions || [];
+                                                                                            const transitionExists = actionsList.some((a, idx) => idx !== aIdx && isTransitionActionType(a?.type));
+                                                                                            return (
+                                                                                                <>
+                                                                                                    <option value="NEXT_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Next Screen</option>
+                                                                                                    <option value="PREV_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Previous Screen</option>
+                                                                                                    <option value="GO_TO_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Specific Screen</option>
+                                                                                                    <option value="COMPLETE_APP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Complete App</option>
+                                                                                                    <option value="CANCEL_APP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Cancel App</option>
+                                                                                                </>
+                                                                                            );
+                                                                                        })()}
                                                                                     </optgroup>
                                                                                 </select>
                                                                                 {renderActionFields(act, aIdx, cIdx)}
@@ -17771,11 +17913,20 @@ const AppBuilder = () => {
                                                                                     <option value="CALCULATE_FORMULA">Advanced: Calculate Formula</option>
                                                                                 </optgroup>
                                                                                 <optgroup label="App & Navigation">
-                                                                                    <option value="NEXT_STEP">App: Go to Next Screen</option>
-                                                                                    <option value="PREV_STEP">App: Go to Previous Screen</option>
-                                                                                    <option value="GO_TO_STEP">App: Go to Specific Screen</option>
-                                                                                    <option value="COMPLETE_APP">App: Complete App</option>
-                                                                                    <option value="CANCEL_APP">App: Cancel App</option>
+                                                                                    {(() => {
+                                                                                        const isTransitionActionType = (t) => ['GO_TO_STEP', 'NEXT_STEP', 'PREV_STEP', 'COMPLETE_APP', 'CANCEL_APP'].includes(String(t || ''));
+                                                                                        const actionsList = triggerEditor.trigger?.elseActions || [];
+                                                                                        const transitionExists = actionsList.some((a, idx) => idx !== eIdx && isTransitionActionType(a?.type));
+                                                                                        return (
+                                                                                            <>
+                                                                                                <option value="NEXT_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Next Screen</option>
+                                                                                                <option value="PREV_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Previous Screen</option>
+                                                                                                <option value="GO_TO_STEP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Go to Specific Screen</option>
+                                                                                                <option value="COMPLETE_APP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Complete App</option>
+                                                                                                <option value="CANCEL_APP" disabled={transitionExists && !isTransitionActionType(act.type)}>App: Cancel App</option>
+                                                                                            </>
+                                                                                        );
+                                                                                    })()}
                                                                                 </optgroup>
                                                                             </select>
                                                                             {renderActionFields(act, eIdx, null, true)}
@@ -17833,11 +17984,20 @@ const AppBuilder = () => {
                                         if (window.confirm("Run this trigger now for testing?")) {
                                             const trig = triggerEditor.trigger || {};
                                             const defaultStop = getDefaultStopOnError(trig.event);
-                                            enqueueTriggerEvent({
-                                                eventId: trig.event || 'TEST',
-                                                triggers: [{ ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : defaultStop }],
-                                                stopOnErrorDefault: defaultStop
-                                            });
+                                            // Execute immediately so users can test before saving/publishing.
+                                            const run = async () => {
+                                                try {
+                                                    await executeTrigger(
+                                                        { ...trig, stopOnError: typeof trig.stopOnError === 'boolean' ? trig.stopOnError : defaultStop },
+                                                        { stopRemainingOnError: defaultStop, transitionExecuted: false, followUpEvents: [], isTest: true }
+                                                    );
+                                                    alert('Trigger test executed.');
+                                                } catch (err) {
+                                                    console.error('[Trigger Test] Failed:', err);
+                                                    alert(`Trigger test failed: ${err?.message || 'unknown error'}`);
+                                                }
+                                            };
+                                            run();
                                         }
                                     }}
                                     style={{ padding: '10px 20px', backgroundColor: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
